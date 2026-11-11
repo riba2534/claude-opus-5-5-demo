@@ -26,6 +26,12 @@ const res = await build({
   legalComments: 'none',
   logLevel: 'warning',
   plugins: dev ? [] : [glsl],
+  // 内联的素材：官方豆包头像、头部 3D 模型的量化几何与贴图
+  define: {
+    __DOUBAO__: JSON.stringify('data:image/webp;base64,' + readFileSync('assets/doubao-official.webp').toString('base64')),
+    __HEADTEX__: JSON.stringify('data:image/webp;base64,' + readFileSync('assets/doubao-head.webp').toString('base64')),
+    __HEADBIN__: JSON.stringify(readFileSync('assets/doubao-head.bin').toString('base64')),
+  },
 });
 const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const html = readFileSync('index.template.html', 'utf8').replace('/*APP_JS*/', () => js);

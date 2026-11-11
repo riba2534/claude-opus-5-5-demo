@@ -23,11 +23,12 @@ export function updateEnv(tod) {
   k3(e.sunK, sunC, day);
   if (el > -0.06) {
     // 太阳主光；方向的仰角有下限，避免阴影被拉得过长
-    const k = smooth(-0.06, 0.1, el) * lerp(3.9, 3.2, gold), y = max(el, 0.24), q = hypot(e.sun[0], y, e.sun[2]);
+    const k = smooth(-0.06, 0.1, el) * lerp(5.6, 4.3, gold), y = max(el, 0.24), q = hypot(e.sun[0], y, e.sun[2]);
     k3(e.LC, sunC, k); e.L[0] = e.sun[0] / q; e.L[1] = y / q; e.L[2] = e.sun[2] / q;
-  } else { k3(e.LC, [0.4, 0.56, 1], 0.62 * smooth(-0.06, -0.24, el)); e.L[0] = e.moon[0]; e.L[1] = e.moon[1]; e.L[2] = e.moon[2]; }
-  m3(e.as, [0.05, 0.075, 0.17], m3(tA, [0.62, 0.78, 1.1], [0.75, 0.55, 0.6], gold), day);
-  m3(e.ag, [0.02, 0.028, 0.06], m3(tA, [0.3, 0.27, 0.22], [0.34, 0.2, 0.14], gold), day);
+  } else { k3(e.LC, [0.4, 0.56, 1], 0.3 * smooth(-0.06, -0.24, el)); e.L[0] = e.moon[0]; e.L[1] = e.moon[1]; e.L[2] = e.moon[2]; }
+  // 天光只占太阳的一小部分：受光面和阴影面要拉得开，白色物体在阳光下才是白的
+  m3(e.as, [0.026, 0.04, 0.09], m3(tA, [0.34, 0.4, 0.52], [0.5, 0.36, 0.38], gold), day);
+  m3(e.ag, [0.012, 0.016, 0.034], m3(tA, [0.2, 0.18, 0.15], [0.26, 0.16, 0.11], gold), day);
   e.fog = lerp(0.0046, lerp(0.003, 0.0042, gold), day);
-  e.envI = lerp(1.1, 0.75, day);
+  e.envI = lerp(0.5, 0.38, day);
 }

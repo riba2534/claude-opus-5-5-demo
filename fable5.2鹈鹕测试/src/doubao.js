@@ -1,14 +1,16 @@
 // 豆包与她的自行车：全部用基础几何体程序化建模，骑行姿态由两段 IK 实时求解
-import { PI, TAU, sin, cos, hypot, max, min, lerp, smooth, clamp, atan2, m4, mul, T, translate, rotX, rotY, rotZ, scale, aim, ik2, tp, ident, copy } from './math.js';
+import { PI, TAU, sin, cos, hypot, max, min, lerp, smooth, clamp, atan2, sqrt, m4, mul, T, translate, rotX, rotY, rotZ, scale, aim, ik2, tp, ident, copy } from './math.js';
 import { Geo, SPH, SPL, CYL, CYL8, BOX, CONE, sphere, capsule, rbox, torus, surf, lathe, mixc } from './geo.js';
-import { mesh, draw } from './gfx.js';
+import { mesh, draw, headMesh } from './gfx.js';
+import HM from '../assets/doubao-head.json';
 
-const SKIN = 0xf9dccb, HAIR = 0x4a3029, TEE = 0x1e1e24, DENIM = 0x4a6fb5, BLUE = 0x4d9bff, PALE = 0xbfe0fb;
+const SKIN = 0xf8dcd2, HAIR = 0x4a3029, TEE = 0x232323, SE = 0.05, DENIM = 0x4a6fb5, BLUE = 0x4d9bff, PALE = 0xbfe0fb;
 // 车架几何（米，车身局部坐标：+Z 向前，+Y 向上，原点在两轮触地点中间）
 const WR = 0.29, RA = [0, WR, -0.47], FA = [0, WR, 0.5], BB = [0, 0.26, -0.02], CR = 0.115, PX = 0.105;
 const HT = [0, 0.8, 0.3], HB = [0, 0.62, 0.345], TAUK = 0.245, GRIP = [0.24, 0.89, 0.25];
 const PEL = [0, 0.74, -0.2], SPINE = 0.34, UA = 0.19, FAL = 0.185, TH = 0.25, SHN = 0.26;
 export const M = {}; // 网格表
+let HEAD = null; // 官方头像生成的头模
 export const GUNS = []; // 各武器枪口在枪局部坐标中的位置
 
 export const tube = (g, a, b, r, col, e = 0, gl = 0.6, fl = 3) => {
@@ -19,68 +21,19 @@ export const tube = (g, a, b, r, col, e = 0, gl = 0.6, fl = 3) => {
 export const E = (g, x, y, z, sx, sy, sz, col, e = 0, gl = 0.3, fl = 0, rx = 0, ry = 0, rz = 0) => g.add(SPH, T(x, y, z, rx, ry, rz, sx, sy, sz), col, e, gl, fl);
 
 export function buildDoubao() {
-  // ---------- 头 ----------
-  {
-    const g = new Geo(), k = 0.2, H = (x, y, z, rx, ry, rz, sx, sy, sz) => T(x * k, y * k, z * k, rx, ry, rz, sx * k, (sy ?? sx) * k, (sz ?? sx) * k);
-    g.add(sphere(32, 22), H(0, 0, 0, 0, 0, 0, 1, 0.97, 0.95), (x, y, z) => {
-      const b = max(0, 1 - min(hypot(x - 0.5, y + 0.3, z - 0.76), hypot(x + 0.5, y + 0.3, z - 0.76)) / 0.36);
-      return mixc(SKIN, 0xf29a8e, b * b * 0.7);
-    }, 0, 0.42);
-    // 侧分波波头：每一圈头发从脸部开口的左缘绕过后脑到右缘，开口边缘就是发际线
-    const PART = 0.6;
-    const hair = surf((u, v) => {
-      const th = u * 2.74, y = cos(th);
-      const aR = y > 0.72 ? PART : y > 0.12 ? lerp(-0.8, PART, (y - 0.12) / 0.6) : -0.8 + 0.14 * smooth(0.12, -0.8, y);
-      const aL = y > 0.72 ? PART : y > 0.2 ? lerp(1.9, PART, (y - 0.2) / 0.52) : 1.9;
-      const az = aL + v * (aR + TAU - aL), ed = smooth(0, 0.075, min(v, 1 - v));
-      let rho = (y > 0 ? sin(th) : 1 - 0.13 * smooth(-0.5, -0.92, y)) * lerp(1.015, 1.12, lerp(1, ed, smooth(0.98, 0.6, y)));
-      // 刘海在额前略微蓬起
-      rho *= 1 + 0.05 * smooth(0.9, 0.2, y) * smooth(1.6, 0.6, Math.abs(az > PI ? az - TAU : az)) * ed;
-      return [rho * sin(az), y * 1.1 + 0.02, rho * cos(az) * 0.99 - 0.02];
-    }, 24, 56);
-    g.add(hair, H(0, 0, 0, 0, 0, 0, 1), (x, y, z) => mixc(0x38231e, 0x60402f, smooth(-1, 1.1, y) * 0.75 + 0.25 * (0.5 + 0.5 * sin(atan2(x, z) * 23))), 0, 0.62, 0, 0, 0.55);
-    // 耳朵、鼻子、嘴
-    for (const s of [-1, 1]) g.add(SPH, H(0.955 * s, -0.1, 0.02, 0, 0, 0, 0.09, 0.17, 0.12), 0xf6cfbd, 0, 0.4);
-    g.add(SPH, H(0, -0.3, 0.935, 0, 0, 0, 0.05, 0.04, 0.05), 0xf3c4b2, 0, 0.4);
-    g.add(SPH, H(0, -0.5, 0.835, 0.5, 0, 0, 0.075, 0.024, 0.035), 0xd9707a, 0, 0.6);
-    for (const s of [-1, 1]) {
-      g.add(SPH, H(0.072 * s, -0.487, 0.828, 0.5, 0, 0.55 * s, 0.035, 0.017, 0.028), 0xd9707a, 0, 0.6);
-      // 眉毛
-      g.add(SPH, H(0.37 * s, 0.36, 0.842, -0.35, 0.4 * s, -0.1 * s, 0.17, 0.024, 0.03), 0x3b2620, 0, 0.3);
-    }
-    M.head = mesh(g, 0, 2);
-    // 眼睛单独成网格，便于眨眼（沿 Y 压扁）
-    const e = new Geo();
-    for (const s of [-1, 1]) {
-      const az = 0.4 * s, px = sin(az), pz = cos(az) * 0.95, R = (d, x = 0, y = 0) => [px * (0.935 + d) + cos(az) * x, y - 0.08, pz * (0.935 + d) - sin(az) * x];
-      let q = R(0); e.add(SPH, H(q[0], q[1], q[2], 0, az, 0, 0.225, 0.285, 0.09), 0x2a1916, 0, 0.95);
-      q = R(0.05); e.add(SPH, H(q[0], q[1] - 0.025, q[2], 0, az, 0, 0.15, 0.195, 0.05), 0x70482f, 0, 0.9);
-      q = R(0.078); e.add(SPH, H(q[0], q[1] - 0.025, q[2], 0, az, 0, 0.085, 0.115, 0.03), 0x120a08, 0, 0.95);
-      q = R(0.095, 0.085, 0.11); e.add(SPH, H(q[0], q[1], q[2], 0, az, 0, 0.062, 0.068, 0.02), 0xffffff, 0.3, 0.9);
-      q = R(0.095, -0.075, -0.11); e.add(SPH, H(q[0], q[1], q[2], 0, az, 0, 0.028, 0.032, 0.012), 0xffffff, 0.25, 0.9);
-      q = R(0.03, 0, 0.245); e.add(SPH, H(q[0], q[1], q[2], -0.2, az, -0.08 * s, 0.26, 0.05, 0.075), 0x1c100e, 0, 0.4);
-    }
-    M.eyes = mesh(e, 0, 2);
-  }
   // ---------- 身体 ----------
   {
     let g = new Geo();
-    g.add(capsule(0.105, 0.092, 0.3, 16, 5), T(0, 0.02, 0), TEE, 0, 0.25);
-    for (const s of [-1, 1]) E(g, 0.118 * s, 0.305, 0, 0.064, 0.06, 0.062, TEE, 0, 0.25);
-    g.add(CYL, T(0, 0.33, 0.004, 0, 0, 0, 0.042, 0.09, 0.042), 0xf1c9b6, 0, 0.4);
-    g.add(torus(0.05, 0.014, 16, 6), T(0, 0.352, 0.004, 0, 0, PI / 2), 0x2c2c34, 0, 0.3);
-    // 背上的浅蓝色对话气泡小背包
-    g.add(rbox(0.092, 0.105, 0.05, 0.04, 3), T(0, 0.17, -0.128), PALE, 0, 0.55);
-    g.add(rbox(0.052, 0.04, 0.012, 0.012, 2), T(0, 0.185, -0.178), 0xffffff, 0.06, 0.6);
-    g.add(CONE, T(-0.024, 0.15, -0.18, 0, 0, 2.6, 0.016, 0.03, 0.008), 0xffffff, 0.06, 0.6);
-    for (const s of [-1, 0, 1]) E(g, 0.022 * s, 0.186, -0.191, 0.007, 0.007, 0.004, BLUE, 0.2, 0.6);
-    for (const s of [-1, 1]) g.add(rbox(0.014, 0.12, 0.012, 0.01, 1), T(0.07 * s, 0.23, 0.07, 0.28), 0x8fc4f5, 0, 0.4);
+    // 官方形象的上衣：黑色圆领 T 恤 + 白色内领口；肩宽按官方半身像里头与肩的比例
+    g.add(capsule(0.115, 0.1, 0.3, 16, 5), T(0, 0.02, 0), TEE, 0, 0.25);
+    for (const s of [-1, 1]) E(g, 0.142 * s, 0.31, 0, 0.068, 0.06, 0.064, TEE, 0, 0.25);
+    g.add(torus(0.068, 0.014, 20, 6), T(0, 0.396, 0.012, 0.2, 0, PI / 2), 0xf6efe9, 0.04, 0.3);
     M.torso = mesh(g, 0, 2);
     g = new Geo(); E(g, 0, 0, 0, 0.118, 0.092, 0.105, DENIM, 0, 0.25); M.hips = mesh(g, 0, 2);
-    g = new Geo(); g.add(capsule(0.045, 0.04, UA, 10, 3), null, 0xf6d3c0, 0, 0.4); g.add(capsule(0.054, 0.051, 0.06, 10, 3), null, TEE, 0, 0.25); M.uarm = mesh(g, 0, 4);
-    g = new Geo(); g.add(capsule(0.039, 0.033, FAL, 10, 3), null, 0xf6d3c0, 0, 0.4); E(g, 0, FAL + 0.012, 0, 0.042, 0.046, 0.042, SKIN, 0, 0.4); M.farm = mesh(g, 0, 4);
-    g = new Geo(); g.add(capsule(0.06, 0.05, TH, 10, 3), null, 0xf6d3c0, 0, 0.4); g.add(capsule(0.068, 0.064, 0.13, 10, 3), null, DENIM, 0, 0.25); M.thigh = mesh(g, 0, 4);
-    g = new Geo(); g.add(capsule(0.047, 0.037, SHN, 10, 3), null, 0xf6d3c0, 0, 0.4); g.add(capsule(0.041, 0.041, 0.05, 10, 3), T(0, SHN - 0.07, 0), 0xffffff, 0, 0.3); M.shin = mesh(g, 0, 4);
+    g = new Geo(); g.add(capsule(0.045, 0.04, UA, 10, 3), null, SKIN, SE, 0.4); g.add(capsule(0.054, 0.051, 0.06, 10, 3), null, TEE, 0, 0.25); M.uarm = mesh(g, 0, 4);
+    g = new Geo(); g.add(capsule(0.039, 0.033, FAL, 10, 3), null, SKIN, SE, 0.4); E(g, 0, FAL + 0.012, 0, 0.042, 0.046, 0.042, SKIN, SE, 0.4); M.farm = mesh(g, 0, 4);
+    g = new Geo(); g.add(capsule(0.06, 0.05, TH, 10, 3), null, SKIN, SE, 0.4); g.add(capsule(0.068, 0.064, 0.13, 10, 3), null, DENIM, 0, 0.25); M.thigh = mesh(g, 0, 4);
+    g = new Geo(); g.add(capsule(0.047, 0.037, SHN, 10, 3), null, SKIN, SE, 0.4); g.add(capsule(0.041, 0.041, 0.05, 10, 3), T(0, SHN - 0.07, 0), 0xffffff, 0, 0.3); M.shin = mesh(g, 0, 4);
     g = new Geo();
     g.add(rbox(0.046, 0.034, 0.085, 0.03, 3), T(0, -0.04, 0.035), 0xffffff, 0, 0.5);
     g.add(rbox(0.048, 0.014, 0.088, 0.012, 2), T(0, -0.072, 0.035), BLUE, 0, 0.4);
@@ -170,7 +123,8 @@ export function buildDoubao() {
 
 // ---------- 姿态与绘制 ----------
 const B = m4(), mT = m4(), mS = m4(), mA = m4(), mB = m4(), J = new Float32Array(6), v0 = [0, 0, 0], v1 = [0, 0, 0], v2 = [0, 0, 0];
-export const muzzle = [0, 0, 0], headPos = [0, 0, 0];
+export const muzzle = [0, 0, 0], headPos = [0, 0, 0], headCam = [0, 0, 0];
+const mS2 = m4();
 const put = (ms, local, r, g, b, a) => draw(ms, mul(mB, B, local), r, g, b, a);
 // 画一段肢体：从 a 指向 b，z 轴尽量贴近 hint
 const limb = (ms, a, b, hx, hy, hz, r, g, bl, al) => put(ms, aim(mA, a[0], a[1], a[2], b[0] - a[0], b[1] - a[1], b[2] - a[2], hx, hy, hz), r, g, bl, al);
@@ -203,19 +157,20 @@ export function drawDoubao(p) {
   }
   put(M.hips, translate(ident(mA), px, py, pz), 1, 1, 1, fl);
   // 躯干：前倾 + 朝瞄准方向扭转
-  const leanF = 0.36 + sp * 0.2 - p.pitch * 0.5, tw = clamp(p.aimY, -2.2, 2.2) * 0.62;
+  const lk = p.look || 0, cy_ = p.camY || 0, side = Math.abs(cy_) > 2.85 ? 2.85 : cy_;
+  const leanF = 0.36 + sp * 0.2 - p.pitch * 0.5, tw = lerp(clamp(p.aimY, -2.2, 2.2) * 0.62, clamp(side, -1, 1) * 0.62, lk);
   ident(mT); translate(mT, px, py, pz); rotY(mT, tw * 0.35); rotX(mT, leanF); rotY(mT, tw * 0.65);
   put(M.torso, mT, 1, 1, 1, fl);
-  // 头：抵消前倾，看向瞄准方向
-  const hy_ = clamp(p.aimY - tw, -1.25, 1.25);
-  copy(mA, mT); translate(mA, 0, SPINE + 0.2, 0.012); rotX(mA, -leanF * 0.85); rotY(mA, hy_); rotX(mA, -clamp(p.aimP, -0.6, 0.7) * 0.7 + (p.nod || 0));
-  mul(mB, B, mA); draw(M.head, mB, 1, 1, 1, fl);
-  headPos[0] = mB[12]; headPos[1] = mB[13]; headPos[2] = mB[14];
-  const bl = p.blink ?? 1;
-  translate(mA, 0, -0.016, 0); scale(mA, 1, bl, 1); translate(mA, 0, 0.016, 0);
-  put(M.eyes, mA, 1, 1, 1, fl);
+  // 头：官方头像充气成的头模，原点在脖子根部；抵消前倾并看向瞄准方向（look>0 时回头看镜头）
+  const hy_ = clamp(lerp(p.aimY - tw, side - tw, lk), -1.5, 1.5);
+  copy(mA, mT); translate(mA, 0, SPINE + 0.034, 0.012); rotX(mA, -leanF * 0.85); rotY(mA, hy_); rotX(mA, -clamp(p.aimP, -0.6, 0.7) * 0.6 * (1 - lk) + (p.nod || 0)); rotZ(mA, lk * 0.12 * Math.sign(hy_));
+  mul(mB, B, mA);
+  if (HEAD) { HEAD.matrix.fromArray(mB); HEAD.matrixWorldNeedsUpdate = true; HEAD.visible = true; }
+  tp(mB, 0, 0.27, 0.04, headPos);
+  // 画中画镜头的位置：大体在车头正前方，但跟着头转过去一部分，所以转头看得出来、又始终拍得到脸
+  ident(mS2); translate(mS2, p.x, p.y, p.z); rotY(mS2, p.yaw + (tw + hy_) * 0.72); tp(mS2, -0.28, headPos[1] - p.y + 0.02, 1.6, headCam);
   // 左手握把（把位随转向移动）
-  tp(mT, 0.128, SPINE - 0.04, 0, v0); tp(mS, GRIP[0], GRIP[1] + 0.01, GRIP[2], v2);
+  tp(mT, 0.152, SPINE - 0.035, 0, v0); tp(mS, GRIP[0], GRIP[1] + 0.01, GRIP[2], v2);
   ik2(v0[0], v0[1], v0[2], v2[0], v2[1], v2[2], UA, FAL + 0.02, 0.7, -1, -0.3, J);
   v1[0] = J[0]; v1[1] = J[1]; v1[2] = J[2]; v2[0] = J[3]; v2[1] = J[4]; v2[2] = J[5];
   limb(M.uarm, v0, v1, 0, 0, 1, 1, 1, 1, fl); limb(M.farm, v1, v2, 0, 0, 1, 1, 1, 1, fl);
@@ -223,7 +178,7 @@ export function drawDoubao(p) {
   const wy = p.yaw + p.aimY, cp = cos(p.aimP), wx = sin(wy) * cp, wz = cos(wy) * cp, wyy = sin(p.aimP);
   let dx = B[0] * wx + B[1] * wyy + B[2] * wz, dy = B[4] * wx + B[5] * wyy + B[6] * wz, dz = B[8] * wx + B[9] * wyy + B[10] * wz;
   const dl = hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
-  tp(mT, -0.128, SPINE - 0.04, 0, v0);
+  tp(mT, -0.152, SPINE - 0.035, 0, v0);
   const reach = 0.33 - (p.recoil || 0) * 0.07, rk = (p.recoil || 0) * 0.16;
   v2[0] = v0[0] + dx * reach; v2[1] = v0[1] + dy * reach + rk * 0.3 - 0.01; v2[2] = v0[2] + dz * reach;
   ik2(v0[0], v0[1], v0[2], v2[0], v2[1], v2[2], UA, FAL + 0.02, -0.5, -1, -0.2, J);
@@ -233,4 +188,50 @@ export function drawDoubao(p) {
   aim(mA, v2[0] + dx * 0.035, v2[1] + dy * 0.035, v2[2] + dz * 0.035, dx, dy + rk, dz, 0, -1, 0);
   mul(mB, B, mA); draw(M['gun' + p.wpn], mB, 1, 1, 1, fl);
   const g = GUNS[p.wpn]; tp(mB, g[0], g[2], -g[1], muzzle);
+}
+
+// ---------- 豆包的头：3D 模型 + 官方原图 ----------
+// 几何与侧面/后脑贴图来自用官方头像做图生 3D 得到的模型（tools/prep-head.mjs 裁剪、简化、量化）；
+// 正面再把官方原图沿视线方向投影上去，所以从正面看就是官方那张脸，转到侧面和背面也有真实的头发体积。
+const HS = 0.75, HOX = 0, HOZ = -0.045; // 头模缩放，以及脖子根部在模型坐标里的位置（y 取 HM.ycut）
+export function buildHead(img, sideImg) {
+  // 官方图抠图：从四周泛洪去掉白底与浅蓝圆底，边缘颜色向外扩几圈避免出现底色光晕
+  const S = 1024, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const c = cv.getContext('2d', { willReadFrequently: true }); c.drawImage(img, 0, 0, S, S);
+  const im = c.getImageData(0, 0, S, S), d = im.data, bgm = new Uint8Array(S * S), st = [];
+  const isBg = i => { const R = d[i * 4], G = d[i * 4 + 1], B = d[i * 4 + 2]; return (R > 240 && G > 240 && B > 240) || (B > 228 && B - R > 14 && G > 196 && R > 150); };
+  for (let i = 0; i < S; i++) st.push(i, (S - 1) * S + i, i * S, i * S + S - 1);
+  while (st.length) { const i = st.pop(); if (bgm[i] || !isBg(i)) continue; bgm[i] = 1; const x = i % S; if (x > 0) st.push(i - 1); if (x < S - 1) st.push(i + 1); if (i >= S) st.push(i - S); if (i < S * (S - 1)) st.push(i + S); }
+  for (let k = 0; k < 8; k++) { const add = []; for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) { const i = y * S + x; if (bgm[i] != 1) continue; for (const j of [i - 1, i + 1, i - S, i + S]) if (bgm[j] != 1) { add.push(i, j); break; } } for (let q = 0; q < add.length; q += 2) { const i = add[q], j = add[q + 1]; d[i * 4] = d[j * 4]; d[i * 4 + 1] = d[j * 4 + 1]; d[i * 4 + 2] = d[j * 4 + 2]; bgm[i] = 2; } }
+  for (let i = 0; i < S * S; i++) d[i * 4 + 3] = bgm[i] ? 0 : 255;
+  c.putImageData(im, 0, 0);
+  // 解码量化几何：头部 [nv, ni, 包围盒] + u16 位置 + u16 贴图坐标 + u16 索引
+  const raw = Uint8Array.from(atob(__HEADBIN__), ch => ch.charCodeAt(0)), dv = new DataView(raw.buffer), nv = dv.getUint32(0, true), ni = dv.getUint32(4, true);
+  const mn = [0, 1, 2].map(k => dv.getFloat32(8 + k * 4, true)), sz = [0, 1, 2].map(k => dv.getFloat32(20 + k * 4, true)), org = [HOX, HM.ycut, HOZ];
+  const q = new Uint16Array(raw.buffer, 32, nv * 3), qu = new Uint16Array(raw.buffer, 32 + nv * 6, nv * 2), ix = new Uint16Array(raw.buffer, 32 + nv * 10, ni);
+  const g = { p: new Float32Array(nv * 3), n: new Float32Array(nv * 3), uv: new Float32Array(nv * 2), i: Array.from(ix) }, P = g.p;
+  for (let i = 0; i < nv * 3; i++) P[i] = (mn[i % 3] + (q[i] / 65535) * sz[i % 3] - org[i % 3]) * HS;
+  for (let i = 0; i < nv * 2; i++) g.uv[i] = qu[i] / 65535;
+  // 法线：贴图接缝两侧的顶点位置相同，按位置合并后再求面积加权法线，避免接缝处出现明暗断层
+  const acc = new Map(), key = v => (q[v * 3] * 65536 + q[v * 3 + 1]) * 65536 + q[v * 3 + 2];
+  for (let t = 0; t < ni; t += 3) {
+    const a = ix[t] * 3, b = ix[t + 1] * 3, e = ix[t + 2] * 3, ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[e] - P[a], vy = P[e + 1] - P[a + 1], vz = P[e + 2] - P[a + 2];
+    const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    for (const v of [ix[t], ix[t + 1], ix[t + 2]]) { const k = key(v); let o = acc.get(k); if (!o) acc.set(k, (o = [0, 0, 0])); o[0] += n[0]; o[1] += n[1]; o[2] += n[2]; }
+  }
+  for (let v = 0; v < nv; v++) { const o = acc.get(key(v)) || [0, 1, 0], l = hypot(o[0], o[1], o[2]) || 1; g.n[v * 3] = o[0] / l; g.n[v * 3 + 1] = o[1] / l; g.n[v * 3 + 2] = o[2] / l; }
+  // 官方图的投影参数（模型 xy → 图片坐标），以及模型多补出来的那只右耳的位置（官方形象只露出左耳）
+  const [CX, CY, SX, SY] = HM.align, e = HM.ear || [9, 9, 9];
+  HEAD = headMesh(g, cv, sideImg, [CX + SX * HOX, 1 - CY + SY * HM.ycut, SX / HS, SY / HS], [(e[0] - HOX) * HS, (e[1] - HM.ycut) * HS, (e[2] - HOZ) * HS, 0.085 * HS]);
+}
+export const hideHead = () => { if (HEAD) HEAD.visible = false; };
+// 停放的共享单车（复用豆包座驾的网格，换个车身颜色）
+const pb = m4(), pl = m4();
+export function drawBike(x, y, z, yaw, lean, r, g, b) {
+  ident(pb); translate(pb, x, y, z); rotY(pb, yaw); rotZ(pb, lean);
+  draw(M.frame, pb, r, g, b, 0);
+  draw(M.wheel, rotX(translate(copy(pl, pb), RA[0], RA[1], RA[2]), 0.4), 1, 1, 1, 0);
+  copy(pl, pb); translate(pl, HB[0], HB[1], HB[2]); rotX(pl, -TAUK); rotY(pl, 0.35); rotX(pl, TAUK); translate(pl, -HB[0], -HB[1], -HB[2]);
+  draw(M.fork, pl, 1, 1, 1, 0); draw(M.wheel, translate(pl, FA[0], FA[1], FA[2]), 1, 1, 1, 0);
+  draw(M.crank, rotX(translate(copy(pl, pb), BB[0], BB[1], BB[2]), 1), 1, 1, 1, 0);
 }

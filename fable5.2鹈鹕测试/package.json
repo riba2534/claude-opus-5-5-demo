@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "豆包单车大作战：手写 WebGL2 引擎、零素材、全程序化生成的 3D 单车枪战游戏",
+  "description": "豆包单车大作战：官方豆包形象 + 全程序化写实城市的 3D 单车枪战游戏（Three.js，单文件 HTML）",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs --dev"
+    "dev": "node build.mjs --dev",
+    "prep-head": "node tools/prep-head.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "meshoptimizer": "^1.3.0",
+    "sharp": "^0.35.5"
   },
   "dependencies": {
     "three": "^0.186.1"

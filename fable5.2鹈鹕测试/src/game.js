@@ -1,14 +1,14 @@
 // 游戏流程：波次、掉落、强化、连击计分、状态机与主循环
 import { G, saveOpt } from './state.js';
 import { I, pollInput, endFrame, releaseLock, requestLock } from './input.js';
-import { PI, TAU, sin, cos, hypot, min, max, atan2, clamp, lerp, damp, wrapPi, rnd, random, pick, m4, T, ident, translate, rotY, rotX, scale } from './math.js';
-import { Geo, SPH, CYL, lathe, torus } from './geo.js';
-import { render, setCam, draw, mesh, addLight, fx as post, setQuality, qName, cv, markDirty } from './gfx.js';
+import { PI, TAU, sin, cos, hypot, min, max, atan2, clamp, lerp, damp, wrapPi, rnd, random, pick, m4, T, ident, translate, rotY, rotX, rotZ, scale } from './math.js';
+import { Geo, SPH, CYL, BOX, lathe, torus } from './geo.js';
+import { render, setCam, draw, mesh, addLight, fx as post, setQuality, qName, cv, markDirty, pip } from './gfx.js';
 import { W, findSpot, groundH } from './world.js';
 import { env, updateEnv } from './env.js';
 import { newPlayer, updatePlayer, hurtPlayer, WEAPONS, magOf } from './player.js';
 import { updateEnemies, spawnEnemy, clearEnemies, KIND } from './enemies.js';
-import { drawDoubao, tube, E } from './doubao.js';
+import { drawDoubao, drawBike, headPos, headCam, tube, E } from './doubao.js';
 import * as FX from './fx.js';
 import { S, initAudio, updateAudio, updateMusic, setIntensity, setListener, setVol, toggleMusic } from './audio.js';
 import { $, show, banner, popup, say, updateHud } from './hud.js';
@@ -23,6 +23,9 @@ export function buildPickups() {
   PK[1] = mesh(g, 0, 16);
   g = new Geo(); for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU; g.add(SPH, T(sin(a) * 0.16, 0.3 + cos(a) * 0.16, 0, 0, 0, -a, 0.09, 0.2, 0.07), 0xffd24a, 1, 0.6); } E(g, 0, 0.3, 0, 0.14, 0.14, 0.09, 0xffe680, 1, 0.6);
   PK[2] = mesh(g, 0, 8);
+  g = new Geo(); g.add(SPH, null, 0xffffff, 1, 0.5); PK.lamp = mesh(g, 0, 16);
+  g = new Geo(); E(g, 0, 0, 0, 0.09, 0.07, 0.24, 0x2a2c30, 0, 0.3); PK.bird = mesh(g, 0, 16);
+  g = new Geo(); g.add(BOX, T(0.3, 0, 0, 0, 0, 0, 0.6, 0.015, 0.2), 0x33363b, 0, 0.3); PK.wing = mesh(g, 0, 32);
 }
 
 // ---------- 强化 ----------
@@ -70,7 +73,7 @@ function compose(w) {
 }
 function nextWave() {
   const w = ++G.wave, boss = w % 5 == 0;
-  G.queue = compose(w); G.spawnT = 1.6; G.clearT = 0; G.cluster = null;
+  G.queue = compose(w); G.spawnT = w == 1 ? 3.4 : 1.6; G.clearT = 0; G.cluster = null;
   banner(boss ? '⚠ 幻觉之王' : `第 ${w} 波`, boss ? '巨型幻觉正在逼近，瞄准它的眼睛！' : pick(['Bug 正在涌入街区', '保持移动，别被包围', '起跳台可以帮你甩开追兵', '绕到防火墙背后再开火']));
   S.wave(); if (boss) { S.roar(0, 10, 0); say('这个幻觉有点大……我会盯着它的弱点！'); G.pl.hp = min(G.pl.mhp, G.pl.hp + 30); } else if (w == 1) say(G.touch ? '你好，我是豆包！左侧摇杆骑车，右侧滑动瞄准，按住开火。' : '你好，我是豆包！W A S D 骑车，鼠标瞄准开火。');
   else if (w == 2) say('小心会开枪的乱码兵，骑起来它们就打不准。'); else if (w == 4) say(G.touch ? '有骑手追上来了，试试 🔔 车铃把它们震开！' : '有骑手追上来了，试试 F 键车铃把它们震开！'); else if (w == 6) say('防火墙正面有护盾，绕到背后打。');
@@ -99,6 +102,7 @@ let lastKill = 0, multi = 0;
 function onKill(e, kind, crit) {
   const p = G.pl, K = e.K;
   G.kills++; G.combo++; G.comboT = 4.5; G.mult = 1 + min(G.combo, 40) * 0.1;
+  if (G.rt - (G.lookAt || -9) > 7 && (K.cost >= 3 || G.combo % 5 == 0)) { G.lookAt = G.rt; p.lookT = 1.25; }
   let sc = K.sc * G.mult, tag = '';
   if (!p.gnd && p.airT > 0.25) { sc *= 1.5; tag = '空中击杀'; G.stat.air++; }
   if (kind == 2) { sc += 25; tag = tag || '单车冲撞'; }
@@ -149,7 +153,7 @@ export function startGame() {
   Object.assign(G, { wave: 0, score: 0, combo: 0, comboT: 0, kills: 0, mult: 1, bt: 0, hitstop: 0, t: 0, queue: [], clearT: 0 });
   G.stat = { shots: 0, hits: 0, air: 0, ram: 0, crit: 0, dmg: 0, time: 0 };
   const p = newPlayer(); p.x = 0; p.z = 12; p.yaw = 0; G.cam.yaw = 0; G.cam.pitch = -0.12; G.cam.dist = 5.3;
-  G.tod = 0.12; G.state = 'play';
+  G.tod = 0.12; G.state = 'play'; G.cine = 2.8; G.orb = PI * 0.95; G.orbT = PI * 0.95;
   show('menu', 0); show('over', 0); show('pause', 0); show('perk', 0); show('hud', 1);
   requestLock(cv); nextWave();
 }
@@ -211,12 +215,47 @@ function bot() {
 }
 
 // ---------- 主循环 ----------
-const IM = m4(), bm = m4();
+const IM = m4(), bm = m4(), dm = m4();
 let menuA = 0;
+// 场景里一直在动的东西：共享单车、红绿灯、喷泉、落樱、飞鸟、能量墙、纪念碑气泡
+function ambient(rdt, p) {
+  const c = G.cam, t = G.rt;
+  for (const b of W.bikes) { if (b[7] === undefined) b[7] = groundH(b[0], b[1]); if (hypot(b[0] - c.x, b[1] - c.z) < 110) drawBike(b[0], b[7], b[1], b[2], b[3], b[4], b[5], b[6]); }
+  // 红绿灯：14 秒一个周期，绿 → 黄 → 红
+  for (const l of W.tl) {
+    const k = (t / 14 + l.ph) % 1, st = k < 0.45 ? 0 : k < 0.52 ? 1 : 2;
+    ident(dm); translate(dm, l.x, l.y + (st - 1) * 0.36, l.z); scale(dm, 0.12, 0.12, 0.12);
+    draw(PK.lamp, dm, st == 0 ? 0.1 : 1, st == 2 ? 0.08 : st == 1 ? 0.7 : 1, st == 0 ? 0.35 : 0.05, 0);
+  }
+  // 喷泉水柱
+  if (hypot(c.x, c.z) < 110) for (const j of W.jets) {
+    if (random() < rdt * 26) { const a = atan2(-j[2], -j[0]) + rnd(-0.25, 0.25), v = rnd(0.9, 1.5); FX.spawn(j[0], j[1], j[2], cos(a) * v, rnd(6.6, 8), sin(a) * v, 1.35, 0.1, 0.3, 0.55, 0.7, 0.85, 0.35, 0, 0.15, 12); }
+    if (random() < rdt * 5) FX.spawn(j[0] + rnd(-0.4, 0.4), 0.5, j[2] + rnd(-0.4, 0.4), rnd(-0.3, 0.3), 0.5, rnd(-0.3, 0.3), 1.4, 0.4, 1.3, 0.8, 0.86, 0.92, 0.12, 1, 0.5, -0.2);
+  }
+  // 樱花花瓣：从附近的樱花树上飘落
+  if (W.sak.length) for (let i = 0; i < 3; i++) {
+    const s = W.sak[(random() * W.sak.length) | 0];
+    if (hypot(s[0] - c.x, s[2] - c.z) < 55 && random() < rdt * 22) { const k = 1 - 0.75 * env.night; FX.spawn(s[0] + rnd(-2.6, 2.6), s[1] + rnd(-1.5, 1), s[2] + rnd(-2.6, 2.6), rnd(-0.9, 0.9), rnd(-0.6, 0), rnd(-0.9, 0.9), rnd(4, 6), 0.05, 0.05, 1 * k, 0.72 * k, 0.8 * k, 0.9, 3, 0.9, 0.5); }
+  }
+  // 飞鸟：绕着城市盘旋，翅膀上下扇动
+  for (let i = 0; i < 9; i++) {
+    const a = t * (0.1 + (i % 3) * 0.018) + i * 0.71, r = 46 + i * 7, x = cos(a) * r, z = sin(a) * r, y = 32 + sin(t * 0.3 + i) * 4 + (i % 4) * 3, fl = sin(t * 9 + i * 2) * 0.7;
+    ident(dm); translate(dm, x, y, z); rotY(dm, -a); scale(dm, 1.6, 1.6, 1.6); draw(PK.bird, dm, 1, 1, 1, 0);
+    for (const sd of [1, -1]) { ident(bm); translate(bm, x, y, z); rotY(bm, -a + (sd < 0 ? PI : 0)); rotZ(bm, fl * sd * (sd < 0 ? -1 : 1)); scale(bm, 1.6, 1.6, 1.6); draw(PK.wing, bm, 1, 1, 1, 0); }
+  }
+  draw(W.wall, IM, 1, 1, 1, 0.55 + 0.25 * env.night);
+  ident(bm); translate(bm, 0, 7.7 + sin(t * 0.8) * 0.25, 0); rotY(bm, t * 0.35);
+  draw(W.bubble, bm, 1, 1, 1, 0); W.bubbleSign.matrix.fromArray(bm); W.bubbleSign.matrixWorldNeedsUpdate = true;
+  if (env.night > 0.2) addLight(0, 7.5, 0, 20, 0.6 * env.night, 1.2 * env.night, 2.4 * env.night);
+  // 画中画镜头：固定在车头前方回看豆包
+  pip.on = G.state != 'menu' && !(G.cine > 0) ? 1 : 0;
+  const q = pip.cam;
+  q[0] = headCam[0]; q[1] = headCam[1]; q[2] = headCam[2]; q[3] = headPos[0]; q[4] = headPos[1] - 0.02; q[5] = headPos[2];
+}
 export function step(rdt, sim) {
   G.rt += rdt;
-  if (G.state == 'perk') { if (I.wsel >= 0 && I.wsel < 3 && perkPick) perkPick(I.wsel); if (G.auto && perkPick) perkPick(0); return 0; }
   if (G.state == 'pause') { if (I.pause) pause(0); return 0; }
+  if (G.state == 'perk') { if (I.wsel >= 0 && I.wsel < 3 && perkPick) perkPick(I.wsel); else if (G.auto && perkPick) perkPick(0); }
   if (I.music) toggleMusic();
   G.tod = (G.tod + rdt / 400) % 1; updateEnv(G.debugTod ?? G.tod);
   const p = G.pl;
@@ -224,17 +263,24 @@ export function step(rdt, sim) {
     // 待机画面：豆包绕着广场骑行，镜头环绕
     menuA += rdt * 0.42; const r = 15.5, v = 0.42 * r;
     p.x = sin(menuA) * r; p.z = cos(menuA) * r; p.y = 0; p.yaw = menuA + PI / 2; p.wheel += (v / 0.29) * rdt; p.crank += (v / 0.29 / 2.3) * rdt;
-    p.blinkT -= rdt; if (p.blinkT < 0) p.blinkT = rnd(2, 5);
-    const ca = menuA * 0.55 + 1.2, cx = p.x + sin(ca) * 4.6, cz = p.z + cos(ca) * 4.6;
-    setCam(cx, 1.75 + sin(G.rt * 0.3) * 0.3, cz, p.x, 1.05, p.z, 0.82); post.mbNear = 9;
-    drawDoubao({ x: p.x, y: 0, z: p.z, yaw: p.yaw, pitch: 0, lean: 0.11, steer: 0.06, wheel: p.wheel, crank: p.crank, aimY: wrapPi(atan2(cx - p.x, cz - p.z) - p.yaw) * 0.8, aimP: 0.1, recoil: 0, sprint: 0, blink: p.blinkT < 0.12 ? 0.1 : 1, wpn: ((G.rt / 6) | 0) % 4 });
+    const ca = p.yaw + sin(G.rt * 0.22) * 1.1 - 0.25, cx = p.x + sin(ca) * 3.6, cz = p.z + cos(ca) * 3.6;
+    G.cam.x = cx; G.cam.z = cz;
+    setCam(cx, 1.6 + sin(G.rt * 0.3) * 0.2, cz, p.x, 1.18, p.z, 0.8); post.mbNear = 9;
+    drawDoubao({ x: p.x, y: 0, z: p.z, yaw: p.yaw, pitch: 0, lean: 0.11, steer: 0.06, wheel: p.wheel, crank: p.crank, aimY: 0.3, aimP: 0.1, recoil: 0, sprint: 0, wpn: ((G.rt / 6) | 0) % 4, look: 1, camY: wrapPi(atan2(cx - p.x, cz - p.z) - p.yaw) });
     FX.updateFx(rdt, rdt);
+  } else if (G.state == 'perk') {
+    // 选强化时场景继续运转，镜头绕到正面
+    G.orbT = PI * 0.9 + sin(G.rt * 0.5) * 0.35; I.mx = I.mz = 0;
+    updatePlayer(rdt, rdt); updateEnemies(rdt); updatePickups(rdt, rdt); FX.updateFx(rdt, rdt);
+    if (!sim) updateAudio(rdt, p.spd, p.coast, !p.gnd);
   } else {
     if (I.pause && G.state == 'play') { pause(1); return 0; }
+    if (G.auto && G.state == 'play') bot();
+    // 开场镜头先在正面停留，再甩到身后；倒地后绕回正面
+    if (G.cine > 0) { G.cine -= rdt; G.orbT = G.cine > 1 ? PI * 0.95 : 0; if (G.cine > 1) I.mx = I.mz = 0; } else G.orbT = p.dead ? PI * 0.85 : 0;
     // 倒地约 1 秒后进入结算，再过 1.6 秒弹出结算面板（按模拟时间推进，不依赖定时器）
     if (G.state == 'play' && p.dead > 0.55) gameOver();
     if (G.state == 'over' && G.overT < 9 && (G.overT += rdt) > 1.6) { G.overT = 9; show('over', 1); }
-    if (G.auto && G.state == 'play') bot();
     G.hitstop = max(0, G.hitstop - rdt);
     const hs = G.hitstop > 0 ? 0.06 : 1, slowmo = p.dead ? 0.35 : 1;
     if (G.bt > 0) { G.bt -= rdt; if (G.bt <= 0) S.skill(0); }
@@ -250,11 +296,7 @@ export function step(rdt, sim) {
     setIntensity(G.state != 'play' ? 0 : boss ? 3 : G.enemies.length > 9 || G.wave > 3 ? 2 : 1);
     if (!sim) updateAudio(rdt, p.spd, p.coast, !p.gnd);
   }
-  // 常驻动态物件：能量墙、纪念碑气泡
-  draw(W.wall, IM, 1, 1, 1, 0.55 + 0.25 * env.night);
-  ident(bm); translate(bm, 0, 7.7 + sin(G.rt * 0.8) * 0.25, 0); rotY(bm, G.rt * 0.35);
-  draw(W.bubble, bm, 1, 1, 1, 0); W.bubbleSign.matrix.fromArray(bm); W.bubbleSign.matrixWorldNeedsUpdate = true;
-  if (env.night > 0.2) addLight(0, 7.5, 0, 20, 0.6 * env.night, 1.2 * env.night, 2.4 * env.night);
+  ambient(rdt, p);
   return 1;
 }
 export function frame(rdt) {
@@ -262,6 +304,8 @@ export function frame(rdt) {
   const live = step(rdt);
   if (live) {
     const p = G.pl, c = G.cam;
+    // 调试：?headcam=角度,距离,高度 让镜头绕着豆包的头看（0 为正前方）
+    if (G.dbgCam) { const [a, d, h] = G.dbgCam, y = p.yaw + a; setCam(headPos[0] + sin(y) * d, headPos[1] + h, headPos[2] + cos(y) * d, headPos[0], headPos[1] - 0.03, headPos[2], 0.6); }
     setListener(c.x, c.y, c.z, -cos(c.yaw), sin(c.yaw));
     render(env, G.rt, rdt, p.x, p.y, p.z);
     adapt(rdt);

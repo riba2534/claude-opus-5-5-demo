@@ -16,8 +16,10 @@ html,body{margin:0;height:100%;background:#0b1020;overflow:hidden;font-family:va
 .hide{display:none!important}
 #hud{position:fixed;inset:0;pointer-events:none;font-weight:700}
 .card{background:var(--glass);border:1.5px solid var(--line);border-radius:18px;box-shadow:0 8px 28px rgba(15,35,80,.22);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-#tl{position:absolute;left:calc(14px + var(--sl));top:calc(14px + var(--st));display:flex;gap:10px;align-items:center;padding:8px 14px 8px 8px}
-#tl img{width:54px;height:54px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#cam{position:absolute;left:calc(14px + var(--sl));top:calc(14px + var(--st));width:clamp(84px,11vw,132px);aspect-ratio:1;border-radius:50%;box-shadow:0 0 0 3px #fff,0 8px 24px rgba(15,35,80,.35);overflow:hidden}
+#cam img{width:100%;height:100%;display:block;transition:opacity .3s}
+#cam:after{content:"LIVE";position:absolute;left:50%;bottom:5px;transform:translateX(-50%);font:800 9px var(--f);letter-spacing:1px;color:#fff;background:rgba(255,61,110,.9);border-radius:6px;padding:1px 6px}
+#tl{position:absolute;left:calc(26px + clamp(84px,11vw,132px) + var(--sl));top:calc(20px + var(--st));padding:8px 14px}
 .bar{width:clamp(130px,17vw,210px);height:13px;border-radius:8px;background:rgba(18,32,58,.16);overflow:hidden;position:relative}
 .bar i{position:absolute;inset:0;transform-origin:left;border-radius:8px;transition:transform .12s}
 #hp i{background:linear-gradient(90deg,#ff5d7d,#ff9a5c)}#st{height:6px;margin-top:5px}#st i{background:linear-gradient(90deg,#3fd0ff,#1f6bff)}
@@ -60,6 +62,7 @@ h1 small{display:block;font-size:clamp(11px,1.5vw,15px);letter-spacing:5px;font-
 .opt select,.opt input{pointer-events:auto;font:700 12px var(--f);accent-color:var(--blue)}.opt select{border-radius:8px;border:1.5px solid #c9d6ea;padding:3px 6px;background:#fff}
 .foot{grid-column:1/-1;font-size:11.5px;font-weight:600;color:#6b7c9c;display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;border-top:1.5px dashed #cdd9ec;padding-top:10px}
 .foot a{color:var(--blue);text-decoration:none;pointer-events:auto}
+#perk{place-items:end center;padding-bottom:7vh;background:linear-gradient(180deg,rgba(8,14,36,.05) 30%,rgba(8,14,36,.72))}
 #perk .box{width:min(900px,96vw);text-align:center;color:#fff}#perk h2,#over h2,#pause h2{font-size:clamp(22px,4vw,36px);margin:0 0 4px;font-weight:900;letter-spacing:3px;text-shadow:0 3px 14px rgba(0,0,0,.4)}
 #perk p{margin:0 0 16px;font-weight:600;opacity:.85}#pk{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .pc{pointer-events:auto;cursor:pointer;padding:20px 14px 16px;text-align:center;transition:.16s;color:var(--ink);position:relative}
@@ -75,7 +78,7 @@ h1 small{display:block;font-size:clamp(11px,1.5vw,15px);letter-spacing:5px;font-
 .tb.on{background:rgba(31,107,255,.7)}.tb:active{background:rgba(255,255,255,.6)}
 #tf{right:calc(26px + var(--sr));bottom:calc(120px + var(--sb));width:88px;height:88px;font-size:16px;background:rgba(255,61,110,.45)}
 #tj{right:calc(130px + var(--sr));bottom:calc(96px + var(--sb))}#tsp{right:calc(118px + var(--sr));bottom:calc(172px + var(--sb))}
-#tbe{right:calc(34px + var(--sr));bottom:calc(196px + var(--sb));width:54px;height:54px}#tsk{right:calc(100px + var(--sr));bottom:calc(222px + var(--sb));width:54px;height:54px}
+#tbe{right:calc(34px + var(--sr));bottom:calc(216px + var(--sb));width:54px;height:54px}#tsk{right:calc(98px + var(--sr));bottom:calc(244px + var(--sb));width:54px;height:54px}
 #tw{right:calc(208px + var(--sr));bottom:calc(20px + var(--sb));width:52px;height:52px}#tre{right:calc(268px + var(--sr));bottom:calc(20px + var(--sb));width:52px;height:52px}
 #tp{left:calc(50% + 96px);top:calc(16px + var(--st));width:40px;height:40px;font-size:12px}
 #boot{position:fixed;inset:0;display:grid;place-items:center;background:linear-gradient(160deg,#cfe8ff,#bfe0fb 50%,#e4d9ff);z-index:9;font-weight:800;color:var(--blue);text-align:center;transition:opacity .5s}
@@ -83,7 +86,7 @@ h1 small{display:block;font-size:clamp(11px,1.5vw,15px);letter-spacing:5px;font-
 @keyframes ld{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
 @media (max-width:560px){#pk{grid-template-columns:1fr}.pc em{display:inline}}
 @media (max-width:760px),(max-height:520px){#menu .box{grid-template-columns:auto 1fr;gap:14px;padding:14px 18px}#menu img{width:84px}.tag{margin:6px 0 10px}.keys{display:none}.opt{margin-top:10px}.pc{padding:10px 8px}.pc em{font-size:26px}.pc b{font-size:15px;margin:2px 0}.pc span{font-size:11.5px}#perk h2{font-size:22px}#perk p{margin-bottom:8px;font-size:12px}#over .box,#pause .box{padding:14px}#os{gap:5px;margin:8px 0 10px;grid-template-columns:repeat(4,1fr)}#os div{padding:5px 8px;font-size:10.5px}#os b{font-size:15px}
-#tl img{width:40px;height:40px}#am{font-size:24px}#ws{display:none}#say{left:calc(14px + var(--sl));bottom:auto;top:calc(86px + var(--st))}#pop{top:118px;right:auto;left:50%;transform:translateX(-50%);align-items:center}#pop div{font-size:12.5px}}
+#am{font-size:24px}#ws{display:none}#say{left:calc(26px + clamp(84px,11vw,132px) + var(--sl));bottom:auto;top:calc(86px + var(--st))}#pop{top:118px;right:auto;left:50%;transform:translateX(-50%);align-items:center}#pop div{font-size:12.5px}}
 body.t #bc{display:none}body.t #br{right:auto;left:50%;transform:translateX(-50%);bottom:calc(10px + var(--sb));padding:5px 14px;min-width:0;text-align:center;display:flex;gap:10px;align-items:baseline}body.t #wn{font-size:12px}
 @media (orientation:portrait){body.t #menu .tag:after{content:"　📱 横屏游玩体验更佳";color:var(--blue)}}
 @media (prefers-reduced-motion:reduce){.btn,.pc{transition:none}#ban.on,#pop div{animation-duration:.01s;animation-fill-mode:forwards;opacity:1}}
@@ -93,7 +96,8 @@ body.t #bc{display:none}body.t #br{right:auto;left:50%;transform:translateX(-50%
 <canvas id="c"></canvas>
 <canvas id="o"></canvas>
 <div id="hud" class="hide">
-  <div id="tl" class="card"><img id="av" alt="" /><div><div id="hpt"><span>豆包</span><b id="hpn">100</b></div><div class="bar" id="hp"><i></i></div><div class="bar" id="st"><i></i></div><div id="buff"></div></div></div>
+  <div id="cam"><img id="av" alt="" /></div>
+  <div id="tl" class="card"><div><div id="hpt"><span>豆包</span><b id="hpn">100</b></div><div class="bar" id="hp"><i></i></div><div class="bar" id="st"><i></i></div><div id="buff"></div></div></div>
   <div id="tc" class="card"><div id="wv">第 <b>1</b> 波</div><div id="en"></div><div id="boss" class="hide"><span>幻觉之王</span><div class="bar"><i></i></div></div></div>
   <div id="tr" class="card"><div id="sc"><small>SCORE</small><span>0</span></div><div id="cb"></div><div id="cbb"></div></div>
   <div id="br" class="card"><div id="wn"></div><div id="am"></div><div id="ws"></div></div>
@@ -129,7 +133,7 @@ body.t #bc{display:none}body.t #br{right:auto;left:50%;transform:translateX(-50%
       <label><input id="oa" type="checkbox" /> 准星对准自动开火</label>
     </div>
   </div>
-  <div class="foot"><span>零素材 · 模型 / 贴图 / 音效 / 配乐全部由代码实时生成 · Three.js + 自建后处理</span><span>最高分 <b id="best">0</b></span>
+  <div class="foot"><span>官方豆包头像 + 全程序化场景 · 材质 / 模型 / 音效 / 配乐由代码实时生成 · Three.js + 自建后处理</span><span>最高分 <b id="best">0</b></span>
     <span><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener">GitHub 源码</a> · <a href="https://x.com/riba2534" target="_blank" rel="noopener">作者 X</a> · 非官方粉丝作品，与豆包官方无关</span></div>
 </div></div>
 <div id="perk" class="ov hide"><div class="box"><h2>选择一项强化</h2><p id="pkt"></p><div id="pk"></div></div></div>

@@ -136,7 +136,7 @@ node build.mjs    # 构建产物输出到 dist/index.html
 2026-11 用 Claude Fable 5.2 追加的一个同类实测，放在 [`fable5.2鹈鹕测试/`](fable5.2鹈鹕测试/)：骑自行车的豆包对抗满城 Bug 的第三人称 3D 枪战游戏。
 
 - 在线体验：<https://fable-5-2-doubao.riba2534.cn/>
-- 同样是单会话生成、单文件 HTML、零外部资源；Three.js r186 + PBR 注入材质 + 自建后处理链（AO、体积光、运动模糊、Bloom、自动曝光、FXAA），音效与配乐由 Web Audio 实时合成
+- 同样是单会话生成、单文件 HTML；主角的头是由官方头像经图生 3D 得到的模型，正面投影官方原图，城市里的材质、建筑、植被、音效与配乐全部由代码生成；Three.js r186 + 注入式 PBR 材质 + 自建后处理链（AO、体积光、运动模糊、Bloom、自动曝光、FXAA）
 - 提示词原文、玩法、技术细节与自测记录见该目录下的 [README](fable5.2鹈鹕测试/README.md)
 
 ## 追加：Fable 5.2 · 豆包炫舞

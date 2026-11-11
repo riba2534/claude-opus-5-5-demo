@@ -122,8 +122,10 @@ export const SPH = sphere(20, 14), SPL = sphere(10, 7), CYL = cyl(1, 1, 1, 16), 
 const I4 = m4();
 // 几何累加器：把基础体按矩阵变换后烘焙进同一个网格，顶点自带颜色/自发光/光泽等材质参数
 export class Geo {
-  constructor() { this.p = []; this.n = []; this.c = []; this.i = []; }
-  // col: 0xRRGGBB 或 (x,y,z)=>0xRRGGBB（按局部坐标着色）；e 自发光；g 光泽；fl: 1=建筑窗户 2=仅夜间发光；sw 随风摆动权重；two 双面
+  constructor() { this.p = []; this.n = []; this.c = []; this.i = []; this.l = [0, 0, 64]; }
+  // 设置后续图元使用的材质层：lay 层号，bump 凹凸强度 0..1，cyl 是否用柱面投影（树干、立柱）
+  m(lay = 0, bump = 0.25, cyl = 0) { this.l = [lay, cyl ? 255 : 0, (bump * 255) | 0]; return this; }
+  // col: 0xRRGGBB 或 (x,y,z)=>0xRRGGBB（按局部坐标着色）；e 自发光；g 光泽；fl: 2=仅夜间发光 3=金属；sw 随风摆动权重；two 双面
   add(pr, m, col, e = 0, g = 0.3, fl = 0, sw = 0, two = 0) {
     m = m || I4;
     const { p, n, c, i } = this, o = p.length / 3, P = pr.p, Nn = pr.n;
@@ -133,7 +135,7 @@ export class Geo {
       k10 = c1 * a2 - c2 * a1, k11 = c2 * a0 - c0 * a2, k12 = c0 * a1 - c1 * a0,
       k20 = a1 * b2 - a2 * b1, k21 = a2 * b0 - a0 * b2, k22 = a0 * b1 - a1 * b0;
     const det = a0 * k00 + a1 * k01 + a2 * k02, fn = typeof col == 'function';
-    const E = (e * 255) | 0, Gl = (g * 255) | 0, F1 = fl == 1 ? 255 : 0, F2 = fl == 2 ? 255 : 0, SW = (sw * 255) | 0;
+    const E = (e * 255) | 0, Gl = (g * 255) | 0, F1 = fl == 3 ? 128 : 0, F2 = fl == 2 ? 255 : 0, SW = (sw * 255) | 0, [l0, l1, l2] = this.l;
     for (let v = 0; v < P.length; v += 3) {
       const x = P[v], y = P[v + 1], z = P[v + 2], nx = Nn[v], ny = Nn[v + 1], nz = Nn[v + 2];
       p.push(a0 * x + b0 * y + c0 * z + m[12], a1 * x + b1 * y + c1 * z + m[13], a2 * x + b2 * y + c2 * z + m[14]);
@@ -141,16 +143,16 @@ export class Geo {
       const l = (det < 0 ? -1 : 1) / (hypot(X, Y, Z) || 1);
       n.push(X * l, Y * l, Z * l);
       const h = fn ? col(x, y, z) : col;
-      c.push(h >> 16, (h >> 8) & 255, h & 255, E, Gl, F1, SW, F2);
+      c.push(h >> 16, (h >> 8) & 255, h & 255, E, Gl, F1, SW, F2, l0, l1, l2, 0);
     }
     const I = pr.i, f = det < 0;
     for (let t = 0; t < I.length; t += 3) i.push(o + I[t], o + I[t + (f ? 2 : 1)], o + I[t + (f ? 1 : 2)]);
     if (two) {
       const o2 = p.length / 3, cnt = o2 - o;
       for (let v = 0; v < cnt; v++) {
-        const s = (o + v) * 3, q = (o + v) * 8;
+        const s = (o + v) * 3, q = (o + v) * 12;
         p.push(p[s], p[s + 1], p[s + 2]); n.push(-n[s], -n[s + 1], -n[s + 2]);
-        c.push((c[q] * two) | 0, (c[q + 1] * two) | 0, (c[q + 2] * two) | 0, c[q + 3], c[q + 4], c[q + 5], c[q + 6], c[q + 7]);
+        c.push((c[q] * two) | 0, (c[q + 1] * two) | 0, (c[q + 2] * two) | 0, c[q + 3], c[q + 4], c[q + 5], c[q + 6], c[q + 7], c[q + 8], c[q + 9], c[q + 10], 0);
       }
       for (let t = 0; t < I.length; t += 3) i.push(o2 + I[t], o2 + I[t + (f ? 1 : 2)], o2 + I[t + (f ? 2 : 1)]);
     }

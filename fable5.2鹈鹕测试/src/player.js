@@ -5,7 +5,7 @@ import { PI, TAU, sin, cos, abs, hypot, min, max, atan2, clamp, lerp, damp, damp
 import { groundH, resolve, raycast, rayN } from './world.js';
 import * as FX from './fx.js';
 import { S } from './audio.js';
-import { drawDoubao, muzzle } from './doubao.js';
+import { drawDoubao, muzzle, hideHead } from './doubao.js';
 import { addLight, fx as post, setCam, draw } from './gfx.js';
 import { damageEnemy, rayEnemies, meshOf } from './enemies.js';
 import { env } from './env.js';
@@ -23,7 +23,7 @@ export function newPlayer() {
   return (G.pl = {
     x: 0, y: 0, z: 10, yaw: 0, spd: 0, vy: 0, gnd: 1, lean: 0, pitch: 0, steer: 0, wheel: 0, crank: 0, coast: 1, airT: 0, jumps: 0, squash: 0, sprint: 0, nx: 0, nz: 0,
     hp: 100, mhp: 100, stam: 100, stamT: 0, tired: 0, wpn: 0, ammo: WEAPONS.map(w => w.mag), rel: 0, fireT: 0, recoil: 0, heat: 0, ads: 0,
-    aimY: 0, aimP: 0, target: null, aimD: 50, inv: 0, hurtT: 0, hurtA: 0, skill: 0, bell: 0, boost: 0, dead: 0, blinkT: 2, blink: 1, bonkT: 0, regenT: 0, turn: 0, nod: 0,
+    aimY: 0, aimP: 0, target: null, aimD: 50, look: 0, lookT: 0, inv: 0, hurtT: 0, hurtA: 0, skill: 0, bell: 0, boost: 0, dead: 0, blinkT: 2, blink: 1, bonkT: 0, regenT: 0, turn: 0, nod: 0,
     mods: { dmg: 1, rof: 1, mag: 1, rel: 1, spd: 1, turn: 1, steal: 0, regen: 0, ram: 1, air: 1, bellR: 1, bellCd: 1, skill: 1, boom: 0, djump: 0, magnet: 1, armor: 1 },
   });
 }
@@ -53,9 +53,9 @@ function explode(x, y, z, dmg, R = 6.5) {
   }
   if (any && R > 5) { G.stat.hits++; G.hitMark = 1; }
   for (const s of G.shots) if (hypot(s.x - x, s.y - y, s.z - z) < R) s.life = 0, s.hp = 0;
-  // 火箭跳：离爆点近会被掀飞，只受少量伤害
+  // 火箭跳：离火箭爆点近会被掀飞，只受少量伤害（爆裂弹头的小爆炸不伤自己）
   const d = hypot(p.x - x, p.y + 0.6 - y, p.z - z);
-  if (d < 4.2 && !p.dead) { p.vy = max(p.vy, 0) + 9.5 * (1 - d / 5); p.gnd = 0; p.spd += 4 * (1 - d / 4.2); hurtPlayer(6 * (1 - d / 4.2), x, z); G.popup && G.popup('火箭跳', '#ffd24a'); }
+  if (R > 5 && d < 4.2 && !p.dead) { p.vy = max(p.vy, 0) + 9.5 * (1 - d / 5); p.gnd = 0; p.spd += 4 * (1 - d / 4.2); hurtPlayer(6 * (1 - d / 4.2), x, z); G.popup && G.popup('火箭跳', '#ffd24a'); }
 }
 
 function fire(p, w) {
@@ -193,7 +193,7 @@ export function updatePlayer(dt, rdt) {
         else {
           // 地面"掉下去"的速度变化超过重力所能提供的（坡道唇口、坡顶）就腾空，保留当前竖直速度
           const nv = (gh - p.y) / h;
-          if (p.vy - nv > GRAV * h + 1 && p.vy > 0.8) { p.gnd = 0; p.y = max(gh, p.y + p.vy * h); p.vy -= GRAV * h; p.airT = 0; p.jumps = 0; }
+          if (p.vy - nv > GRAV * h + 1 && p.vy > 3) { p.gnd = 0; p.y = max(gh, p.y + p.vy * h); p.vy -= GRAV * h; p.airT = 0; p.jumps = 0; }
           else { p.vy = nv; p.y = gh; }
         }
       } else {
@@ -222,16 +222,17 @@ export function updatePlayer(dt, rdt) {
       } else { e.x += (dx / d) * (rr - d) * 0.6; e.z += (dz / d) * (rr - d) * 0.6; }
     }
     // ---- 武器 ----
-    if (I.wsel >= 0 && I.wsel != p.wpn) { p.wpn = I.wsel; p.rel = 0; p.fireT = max(p.fireT, 0.22); S.ui(); }
-    if (I.wnext) { p.wpn = (p.wpn + I.wnext + 4) % 4; p.rel = 0; p.fireT = max(p.fireT, 0.22); S.ui(); }
+    const live = G.state == 'play' && !(G.cine > 0);
+    if (!live) { p.fireT = max(p.fireT, 0.15); } else if (I.wsel >= 0 && I.wsel != p.wpn) { p.wpn = I.wsel; p.rel = 0; p.fireT = max(p.fireT, 0.22); S.ui(); }
+    if (live && I.wnext) { p.wpn = (p.wpn + I.wnext + 4) % 4; p.rel = 0; p.fireT = max(p.fireT, 0.22); S.ui(); }
     const w = p.wpn, W = WEAPONS[w];
     p.fireT -= dt;
     if (p.rel > 0) { p.rel -= dt * (p.boost > 0 ? 1.5 : 1); if (p.rel <= 0) { p.ammo[w] = magOf(w); S.reloaded(); } }
     else if ((I.reload && p.ammo[w] < magOf(w)) || p.ammo[w] <= 0) { p.rel = W.rel * m.rel; S.reload(); }
-    const trig = I.fire || ((G.opt.autofire || G.touch) && p.target && p.target.K);
+    const trig = live && (I.fire || ((G.opt.autofire || G.touch) && p.target && p.target.K));
     if (trig && p.fireT <= 0 && p.rel <= 0 && p.ammo[w] > 0) fire(p, w);
-    if (I.bell && p.bell <= 0) bell(p);
-    if (I.skill && p.skill >= 100 && G.bt <= 0) { p.skill = 0; G.bt = 5.5; S.skill(1); G.say && G.say('深度思考中……世界慢下来了。'); FX.ring(p.x, p.y + 0.3, p.z, 1, 26, 0.12, 0.4, 0.8, 0.6, 1); }
+    if (live && I.bell && p.bell <= 0) bell(p);
+    if (live && I.skill && p.skill >= 100 && G.bt <= 0) { p.skill = 0; G.bt = 5.5; S.skill(1); G.say && G.say('深度思考中……世界慢下来了。'); FX.ring(p.x, p.y + 0.3, p.z, 1, 26, 0.12, 0.4, 0.8, 0.6, 1); }
     if (m.regen && p.hp < p.mhp) { p.regenT -= dt; if (p.regenT <= 0) p.hp = min(p.mhp, p.hp + m.regen * dt); }
   }
   // ---- 动画量 ----
@@ -244,16 +245,19 @@ export function updatePlayer(dt, rdt) {
   // ---- 相机 ----
   c.kick = damp(c.kick, 0, 8, rdt); c.shake = damp(c.shake, 0, 5, rdt);
   camBasis();
-  const side = 0.58, px = p.x - cos(c.yaw) * side, py = p.y + 1.42, pz = p.z + sin(c.yaw) * side, want = lerp(5.3, 3.1, p.ads) + min(p.spd / 20, 1) * 0.5;
-  const cd = max(raycast(px, py, pz, -cf[0], -cf[1], -cf[2], want + 0.4) - 0.35, 0.8);
+  // 过场（开场、选强化、倒地）时镜头绕到正面：orb 是叠加在瞄准偏航上的环绕角
+  G.orb = damp(G.orb || 0, G.orbT || 0, 3.2, rdt);
+  const ob = G.orb, vy_ = c.yaw + ob, vp = lerp(c.pitch + c.kick, -0.06, min(abs(ob), 1)), vf = [sin(vy_) * cos(vp), sin(vp), cos(vy_) * cos(vp)];
+  const side = 0.58 * (1 - min(abs(ob) * 0.7, 1)), px = p.x - cos(vy_) * side, py = p.y + 1.42 - min(abs(ob), 1) * 0.25, pz = p.z + sin(vy_) * side, want = lerp(4.5, 2.9, p.ads) + min(p.spd / 20, 1) * 0.5 - min(abs(ob), 1) * 1.2;
+  const cd = max(raycast(px, py, pz, -vf[0], -vf[1], -vf[2], want + 0.4) - 0.35, 0.8);
   c.dist = cd < c.dist ? cd : damp(c.dist, min(cd, want), 5, rdt);
-  let cx = px - cf[0] * c.dist, cyy = py - cf[1] * c.dist, cz = pz - cf[2] * c.dist;
+  let cx = px - vf[0] * c.dist, cyy = py - vf[1] * c.dist, cz = pz - vf[2] * c.dist;
   cyy = max(cyy, groundH(cx, cz) + 0.3);
   const sh = c.shake * c.shake * 0.35;
   cx += rnd(-sh, sh); cyy += rnd(-sh, sh); cz += rnd(-sh, sh);
   c.x = cx; c.y = cyy; c.z = cz;
   c.fov = damp(c.fov, lerp(1.06, 0.68, p.ads) + p.sprint * 0.16 * min(p.spd / 16, 1) + (G.bt > 0 ? -0.06 : 0), 6, rdt);
-  setCam(cx, cyy, cz, cx + cf[0], cyy + cf[1], cz + cf[2], c.fov);
+  setCam(cx, cyy, cz, cx + vf[0], cyy + vf[1], cz + vf[2], c.fov);
   // ---- 瞄准点：相机射线越过玩家后与世界/敌人求交 ----
   const t0 = max((p.x - cx) * cf[0] + (p.y + 1.2 - cyy) * cf[1] + (p.z - cz) * cf[2] + 0.8, 0.5);
   cs[0] = cx + cf[0] * t0; cs[1] = cyy + cf[1] * t0; cs[2] = cz + cf[2] * t0;
@@ -261,13 +265,18 @@ export function updatePlayer(dt, rdt) {
   for (const h of rayEnemies(cs[0], cs[1], cs[2], cf[0], cf[1], cf[2], ad, G.touch ? 0.6 : 0.1)) if (h.t < ad) { ad = h.t; p.target = h.e || h.s; }
   p.aimD = ad;
   const ax = cs[0] + cf[0] * ad - p.x, ay = cs[1] + cf[1] * ad - (p.y + 1.1), az = cs[2] + cf[2] * ad - p.z;
-  p.aimY = p.dead ? damp(p.aimY, 0, 4, rdt) : wrapPi(atan2(ax, az) - p.yaw); p.aimP = atan2(ay, hypot(ax, az));
+  const cineK = abs(ob) > 0.25;
+  p.aimY = p.dead || cineK ? damp(p.aimY, 0, 4, rdt) : wrapPi(atan2(ax, az) - p.yaw); p.aimP = cineK ? damp(p.aimP, 0, 4, rdt) : atan2(ay, hypot(ax, az));
+  if (cineK) p.target = null;
+  // 击杀后回头看一眼镜头
+  p.lookT -= rdt; p.look = damp(p.look, p.lookT > 0 && !p.dead ? 1 : 0, 7, rdt);
   // ---- 后处理参数 ----
   post.spd = damp(post.spd, p.sprint * smooth(11, 18, p.spd), 5, rdt); post.dmg = p.hurtT * 0.8 + (p.hp < 30 && !p.dead ? 0.18 + 0.1 * sin(G.rt * 6) : 0); post.bt = damp(post.bt, G.bt > 0 ? 1 : 0, 6, rdt);
   post.mbNear = c.dist + 2.2;
   // 夜间车灯
   if (env.night > 0.3) addLight(p.x + sin(p.yaw) * 4.5, p.y + 1.6, p.z + cos(p.yaw) * 4.5, 12, 2.2 * env.night, 2 * env.night, 1.5 * env.night);
   if (sin(G.rt * 40) > 0 || p.inv <= 0 || p.dead)
-    drawDoubao({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, steer: p.steer, wheel: p.wheel, crank: p.crank, aimY: p.aimY, aimP: p.aimP, recoil: p.recoil, sprint: p.sprint, blink: p.dead ? 0.1 : p.blink, wpn: p.wpn, squash: p.squash, fl: p.hurtT > 0.75 ? 0.5 : 0, nod: p.nod });
+    drawDoubao({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, steer: p.steer, wheel: p.wheel, crank: p.crank, aimY: p.aimY, aimP: p.aimP, recoil: p.recoil, sprint: p.sprint, wpn: p.wpn, squash: p.squash, fl: p.hurtT > 0.75 ? 0.5 : 0, nod: p.nod, look: p.look, camY: wrapPi(atan2(cx - p.x, cz - p.z) - p.yaw) });
+  else hideHead();
 }
 export const camFwd = cf;
