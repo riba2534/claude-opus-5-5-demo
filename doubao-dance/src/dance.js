@@ -140,7 +140,7 @@ const M = mirrorSpec;
 }
 {
   const a = { x: 0.1, chest: [0, 0, -4], armL: [-24, 25], elbowL: 26, armR: [-24, 25], elbowR: 26, legL: [0, 16, 0], legR: [0, 4, 0] };
-  const b = { x: 0.1, head: [-8, 0, 0], armL: [60, 116, 0], elbowL: 10, armR: [60, 116, 0], elbowR: 10, legL: [0, 6, 0], legR: [0, 6, 0], kneeL: 14, kneeR: 14, expr: 'happy' };
+  const b = { x: 0.1, head: [-8, 0, 0], armL: [-26, 104, 0], elbowL: 62, armR: [-26, 104, 0], elbowR: 62, legL: [0, 6, 0], legR: [0, 6, 0], kneeL: 14, kneeR: 14, expr: 'happy' };
   move('clap', 4, [[0, a], [1, b], [2, M(a)], [3, M(b)]], { bounce: 9 });
 }
 {
