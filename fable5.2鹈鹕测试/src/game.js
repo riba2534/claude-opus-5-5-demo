@@ -255,7 +255,7 @@ function ambient(rdt, p) {
 export function step(rdt, sim) {
   G.rt += rdt;
   if (G.state == 'pause') { if (I.pause) pause(0); return 0; }
-  if (G.state == 'perk') { if (I.wsel >= 0 && I.wsel < 3 && perkPick) perkPick(I.wsel); else if (G.auto && perkPick) perkPick(0); }
+  if (G.state == 'perk') { if (I.wsel >= 0 && I.wsel < 3 && perkPick) perkPick(I.wsel); else if (G.auto && perkPick) perkPick(0); I.wsel = -1; I.wnext = 0; } // 选强化用掉的数字键不再当作切枪
   if (I.music) toggleMusic();
   G.tod = (G.tod + rdt / 400) % 1; updateEnv(G.debugTod ?? G.tod);
   const p = G.pl;

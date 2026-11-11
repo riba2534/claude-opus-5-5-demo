@@ -38,6 +38,7 @@ const USky = { uZen: { value: V3() }, uMoonD: { value: V3() }, uCl: { value: V3(
 const meshes = [];
 let matObj, matGround, matFac, matShell, matSign, sky, sun, hemi, pmrem, envScene, envRT, envT = -99, grassM, fcam, rtFace, texRes = 0;
 const pool = [];
+let matRT = [];
 // 粒子 / 光束实例缓冲
 const PMAX = 4096, TMAX = 1024;
 export const pbuf = new Float32Array(PMAX * 12), tbuf = new Float32Array(TMAX * 12);
@@ -91,7 +92,8 @@ function bakeMaterials(size) {
   const a = mk(), b = mk(), m = sm(S.VS_Q, S.FS_BAKE, { uL: { value: 0 }, uPass: { value: 0 } }, { depthTest: false, depthWrite: false });
   for (let l = 0; l < NL; l++) for (let p = 0; p < 2; p++) { m.uniforms.uL.value = l; m.uniforms.uPass.value = p; pass(m, p ? b : a, l); }
   renderer.setRenderTarget(null);
-  for (const k of ['tMatA', 'tMatB']) U[k].value && U[k].value.dispose();
+  for (const o of matRT) o.dispose(); // 释放上一档画质烘焙的渲染目标
+  matRT = [a, b];
   U.tMatA.value = a.texture; U.tMatB.value = b.texture; m.dispose();
 }
 
@@ -202,6 +204,8 @@ export function initGfx(canvas, q) {
   rtLum = rt(64, 64, { generateMipmaps: true, minFilter: LinearMipmapLinearFilter });
   rtAd = [rt(1, 1), rt(1, 1)];
   rtFace = new WebGLRenderTarget(384, 384, { type: FT });
+  // 显卡上下文丢失再恢复后，渲染目标里烘焙好的材质会丢，需要重新烘焙并重建各级缓冲
+  canvas.addEventListener('webglcontextrestored', () => { texRes = 0; bakeMaterials(Q.tex); envT = -99; dirty = 1; });
   setQuality(q);
   return 1;
 }

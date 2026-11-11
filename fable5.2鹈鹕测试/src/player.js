@@ -194,6 +194,8 @@ export function updatePlayer(dt, rdt) {
           // 地面"掉下去"的速度变化超过重力所能提供的（坡道唇口、坡顶）就腾空，保留当前竖直速度
           const nv = (gh - p.y) / h;
           if (p.vy - nv > GRAV * h + 1 && p.vy > 3) { p.gnd = 0; p.y = max(gh, p.y + p.vy * h); p.vy -= GRAV * h; p.airT = 0; p.jumps = 0; }
+          // 台阶（路缘、平台边）：一个子步里抬升得比任何坡道都陡，只贴上去，不把它记成起跳初速
+          else if (nv > 0.75 * max(p.spd, 2)) { p.y = gh; p.vy = 0; }
           else { p.vy = nv; p.y = gh; }
         }
       } else {

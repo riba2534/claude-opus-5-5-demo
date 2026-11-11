@@ -1,5 +1,5 @@
 // 城市构件：带立面的建筑（阳台、空调外机、底商、屋顶设备）、人行道与路缘石、汽车、红绿灯、公交站等街道设施
-import { PI, TAU, sin, cos, hypot, min, max, floor, abs, T, m4, lerp } from './math.js';
+import { PI, TAU, sin, cos, hypot, min, max, floor, abs, T, m4, lerp, smooth } from './math.js';
 import { Geo, BOX, CYL, CYL8, SPH, SPL, CONE, rbox, cyl, lathe, torus, normals, mixc } from './geo.js';
 
 // 立面参数必须与着色器 F_FAC 保持一致：开间、层高、底层高度
@@ -75,7 +75,7 @@ export function building(C, x, z, w, d, h, rot, st, far, y0 = 0) {
       }
     }
     // 雨水管
-    { const [ax, az] = pos(0.35, 0.09); g.m(7, 0.2).add(CYL8, T(ax, 0, az, 0, 0, 0, 0.065, h, 0.065), 0xb0b3b6, 0, 0.5); }
+    { const [ax, az] = pos(0.35, 0.09); g.m(7, 0.2); for (let y = 0; y < h; y += 4) { const l = min(4, h - y); g.add(BOX, T(ax, y + l / 2, az, 0, ry, 0, 0.11, l, 0.11), 0xb0b3b6, 0, 0.5); } } // 按 4 米分段，避免整根几十米长的细长三角形
     // 底商：雨棚 + 招牌 + 门前台阶
     if (st != 3) for (let b = 0; b < nb; b++) {
       const u = m0 + (b + 0.5) * W, k = R0();
@@ -135,7 +135,8 @@ export function sidewalkH(x, z) {
   const r = hypot(x, z);
   if (r > 123.5 || r < 27.5) return 0;
   const dc = min(abs(x), abs(z)), dr = abs(r - 78), band = d => (d < 4.55 || d > 7.25 ? 0 : d < 5.45 ? ((d - 4.55) / 0.9) * SWH : d > 6.35 ? ((7.25 - d) / 0.9) * SWH : SWH);
-  return max(dr > 7.25 ? band(dc) : 0, dc > 7.25 ? band(dr) : 0);
+  // 端头（广场边、路口、场地边缘）用一米长的缓坡收掉，否则 13 厘米的台阶会在一个物理子步里被当成极大的上升速度
+  return max(band(dc) * smooth(7.25, 8.25, dr), band(dr) * smooth(7.25, 8.25, dc)) * smooth(27.5, 28.5, r) * smooth(123.5, 122.5, r);
 }
 
 // ---------- 汽车 ----------

@@ -86,9 +86,13 @@ vec3 matS(float L,vec2 t,float bump,out vec3 ram){
   return a.rgb*2.;}
 // 盒式投影：地面用 xz，墙面用"沿墙方向 + 高度"
 vec2 boxUV(vec3 p,vec3 n){if(abs(n.y)>.7)return p.xz;vec2 t=normalize(vec2(n.z,-n.x)+1e-5);return vec2(dot(p.xz,t),p.y);}
+// 不足一个像素宽的细长三角形上屏幕空间导数会退化，直接归一化会得到 NaN 法线（画面上的黑点），所以先检查再用
 vec3 bumpN(vec3 sp,vec3 sn,vec2 dH,float fd){
-  vec3 sx=normalize(dFdx(sp)),sy=normalize(dFdy(sp)),r1=cross(sy,sn),r2=cross(sn,sx);float det=dot(sx,r1)*fd;
-  return normalize(abs(det)*sn-sign(det)*(dH.x*r1+dH.y*r2));}
+  vec3 dx=dFdx(sp),dy=dFdy(sp);float lx=dot(dx,dx),ly=dot(dy,dy);
+  if(!(lx>1e-24&&ly>1e-24&&lx<1e12&&ly<1e12))return sn;
+  vec3 sx=dx*inversesqrt(lx),sy=dy*inversesqrt(ly),r1=cross(sy,sn),r2=cross(sn,sx);float det=dot(sx,r1)*fd;
+  vec3 r=abs(det)*sn-sign(det)*(dH.x*r1+dH.y*r2);float lr=dot(r,r);
+  return lr>1e-24&&lr<1e12?r*inversesqrt(lr):sn;}
 // 路灯位置是解析的（沿十字路与环路等距排布），任何表面都能直接算出灯光池，不需要逐灯循环
 float lamps(vec2 p){
   float dx=abs(p.x),dz=abs(p.y),r=length(p);
