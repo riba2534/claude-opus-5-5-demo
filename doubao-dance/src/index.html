@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<title>豆包炫舞 · 和豆包一起踩着节拍跳舞</title>
+<meta name="description" content="浏览器里的 3D 节奏舞蹈游戏：敲方向键、踩重拍，和豆包一起赢下舞会。Three.js + WebAudio 全程序化生成，无任何外部素材。" />
+<meta name="theme-color" content="#0a0820" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236fa8ff'/%3E%3Cstop offset='1' stop-color='%23ff7eb6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Ccircle cx='32' cy='35' r='17' fill='%23ffe2d0'/%3E%3Cpath d='M13 35a19 19 0 0 1 38 0c-4-9-12-12-19-9-7-3-15 0-19 9z' fill='%231d1a24'/%3E%3Ccircle cx='25' cy='38' r='3.2' fill='%233a2414'/%3E%3Ccircle cx='39' cy='38' r='3.2' fill='%233a2414'/%3E%3Cpath d='M27 45q5 4 10 0' stroke='%233a2414' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+<style>
+/*APP_STYLE*/
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+  <canvas id="hud"></canvas>
+
+  <!-- 游戏内顶部信息 -->
+  <div id="top" class="hidden">
+    <div class="me-card">
+      <div class="avatar">豆</div>
+      <div class="me-info">
+        <div class="score" id="score">0</div>
+        <div class="np"><span id="songName"></span></div>
+      </div>
+    </div>
+    <div class="mid">
+      <div class="progress"><i id="prog"></i></div>
+      <div class="secrow"><span class="tag" id="secLabel">前奏</span><span class="tag ghost" id="modeLabel"></span></div>
+      <div class="gauge" id="gaugeBox"><i id="gauge"></i><b id="gaugeText">灵感值</b></div>
+    </div>
+    <div class="right">
+      <ol id="rank"></ol>
+      <button id="btnPause" class="round" aria-label="暂停">❚❚</button>
+    </div>
+  </div>
+  <div id="bubble" class="hidden"><b>豆包</b><span id="bubbleText"></span></div>
+
+  <!-- 载入 -->
+  <section id="boot">
+    <div class="boot-logo">豆包炫舞</div>
+    <div class="boot-sub" id="bootMsg">正在搭建舞台</div>
+    <div class="boot-bar"><i id="bootFill"></i></div>
+  </section>
+
+  <!-- 标题 -->
+  <section id="title" class="screen hidden">
+    <div class="title-box">
+      <div class="logo-en">DOUBAO DANCE</div>
+      <h1 class="logo">豆包炫舞</h1>
+      <p class="tagline">敲方向键，踩重拍，和豆包一起赢下这场舞会</p>
+      <div class="btns">
+        <button class="btn primary" id="btnStart">开始跳舞</button>
+        <button class="btn" id="btnHelp">玩法说明</button>
+        <button class="btn" id="btnSettings">设置</button>
+      </div>
+      <div class="links">
+        <a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub 源码</a>
+        <a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>关注作者 X</a>
+      </div>
+      <p class="fine">Three.js · WebAudio · 模型、贴图、音乐全部由代码生成 · 非官方同人作品</p>
+    </div>
+  </section>
+
+  <!-- 选歌 -->
+  <section id="select" class="screen hidden">
+    <div class="panel wide">
+      <div class="panel-head"><button class="back" id="btnSelBack">‹ 返回</button><h2>选择曲目</h2><span class="spacer"></span></div>
+      <div class="songs" id="songList"></div>
+      <div class="row">
+        <div class="field">
+          <label>玩法</label>
+          <div class="seg" id="modeSeg"></div>
+          <p class="hint" id="modeHint"></p>
+        </div>
+        <div class="field">
+          <label>难度</label>
+          <div class="seg" id="diffSeg"></div>
+          <p class="hint" id="diffHint"></p>
+        </div>
+      </div>
+      <div class="go-row">
+        <div class="best" id="bestBox"></div>
+        <button class="btn primary big" id="btnGo">登台</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 玩法说明 -->
+  <section id="help" class="screen hidden">
+    <div class="panel">
+      <div class="panel-head"><button class="back" data-close>‹ 返回</button><h2>玩法说明</h2><span class="spacer"></span></div>
+      <div class="help-grid">
+        <div class="help-card">
+          <h3><i class="dot pink"></i>舞步</h3>
+          <p>每个小节给你一串方向键。按顺序敲完，等节拍圈缩到和目标圈重合（第 4 拍）时按 <kbd>空格</kbd>。时机越准，判定越高。</p>
+          <p class="muted">带「反」字的红色箭头要按相反方向；敲错会从头再来。</p>
+        </div>
+        <div class="help-card">
+          <h3><i class="dot blue"></i>节拍</h3>
+          <p>音符顺着轨道落下，到达判定线时按对应方向键，也可以用 <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd>。</p>
+          <p class="muted">连击越长，每个音符得分越高。</p>
+        </div>
+        <div class="help-card">
+          <h3><i class="dot gold"></i>炫舞秀</h3>
+          <p>主歌拼舞步，副歌打节拍，间奏是自由发挥：踩着拍子按任意方向键，豆包会摆出不同造型。</p>
+          <p class="muted">全曲最后一串是终结技，得分 ×3。</p>
+        </div>
+        <div class="help-card">
+          <h3><i class="dot mint"></i>灵感爆发</h3>
+          <p>打出 Perfect 和 Great 会积攒灵感值。攒满后在下一小节自动爆发，持续 4 小节，期间得分翻倍。</p>
+          <p class="muted">连续 Perfect 还有额外的连 P 加成。</p>
+        </div>
+      </div>
+      <div class="keys">
+        <span><kbd>←</kbd><kbd>↓</kbd><kbd>↑</kbd><kbd>→</kbd> / <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 方向</span>
+        <span><kbd>空格</kbd> 踩拍</span>
+        <span><kbd>Esc</kbd> 暂停</span>
+        <span>触屏：点屏幕上的方向键和圆环 · 也支持手柄</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="settings" class="screen hidden">
+    <div class="panel narrow">
+      <div class="panel-head"><button class="back" data-close>‹ 返回</button><h2>设置</h2><span class="spacer"></span></div>
+      <div class="set-row"><label for="sMusic">音乐音量</label><input type="range" id="sMusic" min="0" max="100" step="1" /><output id="oMusic"></output></div>
+      <div class="set-row"><label for="sSfx">音效音量</label><input type="range" id="sSfx" min="0" max="100" step="1" /><output id="oSfx"></output></div>
+      <div class="set-row"><label for="sOffset">判定偏移</label><input type="range" id="sOffset" min="-200" max="200" step="5" /><output id="oOffset"></output></div>
+      <p class="hint">感觉按得很准却总是偏早或偏晚？蓝牙耳机通常需要把偏移调到 +100 ms 以上。</p>
+      <div class="set-row"><label for="sQuality">画质</label>
+        <select id="sQuality"><option value="auto">自动</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select><output></output></div>
+      <p class="hint">切换画质会重新载入页面。</p>
+    </div>
+  </section>
+
+  <!-- 暂停 -->
+  <section id="pause" class="screen hidden dim">
+    <div class="panel narrow center">
+      <h2>已暂停</h2>
+      <div class="btns col">
+        <button class="btn primary" id="btnResume">继续</button>
+        <button class="btn" id="btnRestart">重新开始</button>
+        <button class="btn" id="btnQuit">返回选歌</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 结算 -->
+  <section id="results" class="screen hidden">
+    <div class="panel result">
+      <div class="res-top">
+        <div class="grade" id="resGrade">S</div>
+        <div class="res-main">
+          <div class="res-rank" id="resRank">第 1 名</div>
+          <div class="res-score" id="resScore">0</div>
+          <div class="res-song" id="resSong"></div>
+          <div class="res-new hidden" id="resNew">新纪录！</div>
+        </div>
+      </div>
+      <div class="res-counts" id="resCounts"></div>
+      <div class="res-stats" id="resStats"></div>
+      <ol class="res-board" id="resBoard"></ol>
+      <div class="res-say"><b>豆包点评</b><span id="resSay"></span></div>
+      <div class="btns">
+        <button class="btn primary" id="btnAgain">再来一次</button>
+        <button class="btn" id="btnOther">换首歌</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="fatal" class="hidden"></div>
+</div>
+<!--APP_SCRIPT-->
+</body>
+</html>

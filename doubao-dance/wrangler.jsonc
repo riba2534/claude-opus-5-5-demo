@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fable-5-2-doubao-dance",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "assets": {
+    "directory": "dist"
+  },
+  "routes": [
+    { "pattern": "fable-5-2-doubao-dance.riba2534.cn", "custom_domain": true }
+  ]
+}

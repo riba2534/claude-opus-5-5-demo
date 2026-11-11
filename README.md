@@ -139,6 +139,14 @@ node build.mjs    # 构建产物输出到 dist/index.html
 - 同样是单会话生成、单文件 HTML、零外部资源；Three.js r186 + PBR 注入材质 + 自建后处理链（AO、体积光、运动模糊、Bloom、自动曝光、FXAA），音效与配乐由 Web Audio 实时合成
 - 提示词原文、玩法、技术细节与自测记录见该目录下的 [README](fable5.2鹈鹕测试/README.md)
 
+## 追加：Fable 5.2 · 豆包炫舞
+
+2026-11 用 Claude Fable 5.2 追加的另一个实测，放在 [`doubao-dance/`](doubao-dance/)：和 Q 版豆包同台的 3D 节奏舞蹈游戏，敲方向键序列、踩重拍、打下落音符，和三位 AI 对手比分。
+
+- 在线体验：<https://fable-5-2-doubao-dance.riba2534.cn/>
+- 同样是单会话生成、单文件 HTML、零外部资源；Three.js r186 卡通渲染 + 镜面反射 LED 舞台 + Bloom 后处理，三首原创曲和全部音效由 Web Audio 实时合成，判定以音频时钟为准
+- 提示词原文、玩法、技术细节与自测记录见该目录下的 [README](doubao-dance/README.md)
+
 ## 说明
 
 - 本仓库由 Claude Opus 5.5 在 Claude Code 中生成（2026-09）；三个游戏的源码、README 均为模型输出原样，人工未做改动
