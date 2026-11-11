@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<meta name="theme-color" content="#bfe0fb" />
+<meta name="description" content="豆包单车大作战：骑上自行车的豆包，对抗满城乱窜的 Bug。零素材、全程序化生成的 3D 单车枪战游戏。" />
+<title>豆包单车大作战 · Doubao Bike Blaster</title>
+<style>
+:root{--blue:#1f6bff;--sky:#bfe0fb;--ink:#12203a;--pink:#ff3d6e;--gold:#ffd24a;--glass:rgba(255,255,255,.86);--line:rgba(255,255,255,.55);
+--f:"PingFang SC","Microsoft YaHei","Noto Sans SC","Hiragino Sans GB",system-ui,-apple-system,sans-serif;--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--sb:env(safe-area-inset-bottom,0px);--st:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0b1020;overflow:hidden;font-family:var(--f);color:var(--ink);user-select:none;-webkit-user-select:none;touch-action:none}
+#c,#o{position:fixed;inset:0;width:100%;height:100%;display:block}
+#o{pointer-events:none}
+.hide{display:none!important}
+#hud{position:fixed;inset:0;pointer-events:none;font-weight:700}
+.card{background:var(--glass);border:1.5px solid var(--line);border-radius:18px;box-shadow:0 8px 28px rgba(15,35,80,.22);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#tl{position:absolute;left:calc(14px + var(--sl));top:calc(14px + var(--st));display:flex;gap:10px;align-items:center;padding:8px 14px 8px 8px}
+#tl img{width:54px;height:54px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.bar{width:clamp(130px,17vw,210px);height:13px;border-radius:8px;background:rgba(18,32,58,.16);overflow:hidden;position:relative}
+.bar i{position:absolute;inset:0;transform-origin:left;border-radius:8px;transition:transform .12s}
+#hp i{background:linear-gradient(90deg,#ff5d7d,#ff9a5c)}#st{height:6px;margin-top:5px}#st i{background:linear-gradient(90deg,#3fd0ff,#1f6bff)}
+#hpt{font-size:12px;margin-bottom:3px;display:flex;justify-content:space-between;gap:8px}#hpt b{color:var(--pink)}
+#buff{font-size:11px;color:#b86a00;margin-top:3px;min-height:13px}
+#tc{position:absolute;left:50%;top:calc(12px + var(--st));transform:translateX(-50%);text-align:center;padding:7px 20px;min-width:150px}
+#wv{font-size:17px;letter-spacing:1px}#wv b{color:var(--blue);font-size:22px}#en{font-size:12px;opacity:.7;margin-top:1px}
+#boss{margin-top:6px;width:min(46vw,420px)}#boss .bar{width:100%;height:11px}#boss i{background:linear-gradient(90deg,#ff2d7a,#b04dff)}#boss span{font-size:12px;color:#b01a5c}
+#tr{position:absolute;right:calc(14px + var(--sr));top:calc(14px + var(--st));text-align:right;padding:8px 16px}
+#sc{font-size:26px;font-variant-numeric:tabular-nums;line-height:1}#sc small{font-size:11px;opacity:.6;display:block;margin-bottom:3px;letter-spacing:2px}
+#cb{font-size:13px;color:var(--pink);height:18px;margin-top:4px;transition:transform .1s;white-space:nowrap;transform-origin:right}#cbb{height:4px;border-radius:3px;background:var(--pink);margin-top:2px;margin-left:auto;width:100px;transform-origin:right}
+#br{position:absolute;right:calc(14px + var(--sr));bottom:calc(14px + var(--sb));padding:10px 16px;text-align:right;min-width:190px}
+#wn{font-size:13px;opacity:.75}#am{font-size:34px;line-height:1.05;font-variant-numeric:tabular-nums}#am small{font-size:15px;opacity:.55}
+#ws{display:flex;gap:5px;justify-content:flex-end;margin-top:6px}#ws span{font-size:11px;padding:3px 7px;border-radius:8px;background:rgba(18,32,58,.1)}#ws span.on{background:var(--blue);color:#fff}
+#bc{position:absolute;left:50%;bottom:calc(16px + var(--sb));transform:translateX(-50%);display:flex;gap:10px}
+.sk{width:58px;height:58px;border-radius:50%;position:relative;display:grid;place-items:center;font-size:20px;background:var(--glass);border:1.5px solid var(--line);box-shadow:0 6px 18px rgba(15,35,80,.2)}
+.sk svg{position:absolute;inset:-3px;width:64px;height:64px;transform:rotate(-90deg)}.sk circle{fill:none;stroke-width:4;stroke-linecap:round}
+.sk kbd{position:absolute;bottom:-7px;font:700 10px var(--f);background:var(--ink);color:#fff;border-radius:6px;padding:1px 6px}
+.sk.rdy{animation:pulse 1s infinite}@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(31,107,255,.25)}}
+#say{position:absolute;left:calc(178px + var(--sl));bottom:calc(30px + var(--sb));max-width:min(46vw,380px);display:flex;gap:8px;align-items:flex-end;opacity:0;transform:translateY(8px);transition:.25s}
+#say.on{opacity:1;transform:none}#say img{width:34px;height:34px;border-radius:50%;border:2px solid #fff}
+#say div{background:#fff;border-radius:16px 16px 16px 4px;padding:8px 13px;font-size:14px;font-weight:600;box-shadow:0 6px 20px rgba(15,35,80,.25);line-height:1.4}
+#pop{position:absolute;right:calc(18px + var(--sr));top:118px;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+#pop div{font-size:15px;padding:4px 12px;border-radius:12px;background:rgba(12,22,48,.72);color:#fff;animation:pin 1.6s forwards}
+@keyframes pin{0%{opacity:0;transform:translateX(30px) scale(.8)}12%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0;transform:translateY(-10px)}}
+#ban{position:absolute;left:0;right:0;top:24%;text-align:center;color:#fff;text-shadow:0 3px 0 rgba(15,35,80,.35),0 0 26px rgba(31,107,255,.8);opacity:0;pointer-events:none}
+#ban.on{animation:ban 2.6s forwards}#ban b{display:block;font-size:clamp(34px,7vw,72px);font-weight:900;letter-spacing:4px}#ban span{font-size:clamp(14px,2vw,20px);font-weight:700}
+@keyframes ban{0%{opacity:0;transform:scale(1.5)}12%{opacity:1;transform:none}78%{opacity:1}100%{opacity:0;transform:translateY(-24px)}}
+.ov{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(10,20,50,.25),rgba(8,14,36,.7));padding:16px;overflow:auto;z-index:5}
+#menu .box{width:min(880px,96vw);padding:clamp(18px,3vw,34px);display:grid;grid-template-columns:auto 1fr;gap:clamp(14px,3vw,34px);align-items:center}
+#menu img{width:clamp(96px,17vw,190px);height:auto;border-radius:50%;border:5px solid #fff;box-shadow:0 12px 34px rgba(31,107,255,.4)}
+h1{margin:0;font-size:clamp(28px,5.2vw,54px);font-weight:900;letter-spacing:2px;line-height:1.08;background:linear-gradient(90deg,#1f6bff,#7a5cff 60%,#ff3d6e);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1 small{display:block;font-size:clamp(11px,1.5vw,15px);letter-spacing:5px;font-weight:800;color:#5f7397;-webkit-text-fill-color:#5f7397;margin-top:6px}
+.tag{font-size:clamp(12px,1.4vw,14px);font-weight:600;color:#43557a;margin:10px 0 14px;line-height:1.6}
+.btn{pointer-events:auto;cursor:pointer;border:0;font:800 clamp(16px,2vw,20px) var(--f);color:#fff;background:linear-gradient(90deg,#1f6bff,#4d9bff);padding:13px 34px;border-radius:999px;box-shadow:0 10px 24px rgba(31,107,255,.45);transition:.15s}
+.btn:hover{transform:translateY(-2px) scale(1.03)}.btn:active{transform:scale(.97)}.btn.g{background:rgba(18,32,58,.1);color:var(--ink);box-shadow:none}
+.keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;font-size:12.5px;font-weight:600;color:#3a4a6c;margin-top:16px}
+.keys kbd{font:800 11px var(--f);background:var(--ink);color:#fff;border-radius:6px;padding:2px 7px;margin-right:6px;white-space:nowrap}.keys div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;font-size:12.5px;font-weight:700;color:#3a4a6c;align-items:center}
+.opt select,.opt input{pointer-events:auto;font:700 12px var(--f);accent-color:var(--blue)}.opt select{border-radius:8px;border:1.5px solid #c9d6ea;padding:3px 6px;background:#fff}
+.foot{grid-column:1/-1;font-size:11.5px;font-weight:600;color:#6b7c9c;display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;border-top:1.5px dashed #cdd9ec;padding-top:10px}
+.foot a{color:var(--blue);text-decoration:none;pointer-events:auto}
+#perk .box{width:min(900px,96vw);text-align:center;color:#fff}#perk h2,#over h2,#pause h2{font-size:clamp(22px,4vw,36px);margin:0 0 4px;font-weight:900;letter-spacing:3px;text-shadow:0 3px 14px rgba(0,0,0,.4)}
+#perk p{margin:0 0 16px;font-weight:600;opacity:.85}#pk{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pc{pointer-events:auto;cursor:pointer;padding:20px 14px 16px;text-align:center;transition:.16s;color:var(--ink);position:relative}
+.pc:hover{transform:translateY(-6px) scale(1.03);box-shadow:0 16px 40px rgba(31,107,255,.5)}.pc em{font-style:normal;font-size:40px;display:block}.pc b{display:block;font-size:18px;margin:6px 0 4px}.pc span{font-size:13px;font-weight:600;color:#4a5b7d;line-height:1.5;display:block}
+.pc kbd{position:absolute;top:8px;left:10px;font:800 11px var(--f);background:var(--ink);color:#fff;border-radius:6px;padding:2px 7px}
+#over .box,#pause .box{width:min(560px,94vw);padding:26px;text-align:center}#over h2,#pause h2{color:var(--ink);text-shadow:none}
+#os{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 18px;text-align:left}#os div{background:rgba(31,107,255,.08);border-radius:12px;padding:8px 12px;font-size:12px;font-weight:600;color:#5a6b8c}#os b{display:block;font-size:20px;color:var(--ink)}
+#osay{font-weight:600;color:#43557a;font-size:14px;line-height:1.5}
+#touch{position:fixed;inset:0;z-index:2;display:none}body.t #touch{display:block}body.t #bc kbd,body.t .pc kbd{display:none}
+#stick{position:absolute;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.5);display:none}
+#knob{position:absolute;left:31px;top:31px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.85)}
+.tb{position:absolute;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.3);border:2px solid rgba(255,255,255,.7);color:#fff;font:800 13px var(--f);display:grid;place-items:center;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.tb.on{background:rgba(31,107,255,.7)}.tb:active{background:rgba(255,255,255,.6)}
+#tf{right:calc(26px + var(--sr));bottom:calc(120px + var(--sb));width:88px;height:88px;font-size:16px;background:rgba(255,61,110,.45)}
+#tj{right:calc(130px + var(--sr));bottom:calc(96px + var(--sb))}#tsp{right:calc(118px + var(--sr));bottom:calc(172px + var(--sb))}
+#tbe{right:calc(34px + var(--sr));bottom:calc(196px + var(--sb));width:54px;height:54px}#tsk{right:calc(100px + var(--sr));bottom:calc(222px + var(--sb));width:54px;height:54px}
+#tw{right:calc(208px + var(--sr));bottom:calc(20px + var(--sb));width:52px;height:52px}#tre{right:calc(268px + var(--sr));bottom:calc(20px + var(--sb));width:52px;height:52px}
+#tp{left:calc(50% + 96px);top:calc(16px + var(--st));width:40px;height:40px;font-size:12px}
+#boot{position:fixed;inset:0;display:grid;place-items:center;background:linear-gradient(160deg,#cfe8ff,#bfe0fb 50%,#e4d9ff);z-index:9;font-weight:800;color:var(--blue);text-align:center;transition:opacity .5s}
+#boot b{font-size:clamp(22px,4vw,34px);display:block;margin-bottom:10px}#boot i{display:block;width:200px;height:6px;border-radius:4px;background:rgba(31,107,255,.2);margin:14px auto 0;overflow:hidden}#boot i:after{content:"";display:block;height:100%;width:40%;background:var(--blue);border-radius:4px;animation:ld 1s infinite}
+@keyframes ld{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
+@media (max-width:560px){#pk{grid-template-columns:1fr}.pc em{display:inline}}
+@media (max-width:760px),(max-height:520px){#menu .box{grid-template-columns:auto 1fr;gap:14px;padding:14px 18px}#menu img{width:84px}.tag{margin:6px 0 10px}.keys{display:none}.opt{margin-top:10px}.pc{padding:10px 8px}.pc em{font-size:26px}.pc b{font-size:15px;margin:2px 0}.pc span{font-size:11.5px}#perk h2{font-size:22px}#perk p{margin-bottom:8px;font-size:12px}#over .box,#pause .box{padding:14px}#os{gap:5px;margin:8px 0 10px;grid-template-columns:repeat(4,1fr)}#os div{padding:5px 8px;font-size:10.5px}#os b{font-size:15px}
+#tl img{width:40px;height:40px}#am{font-size:24px}#ws{display:none}#say{left:calc(14px + var(--sl));bottom:auto;top:calc(86px + var(--st))}#pop{top:118px;right:auto;left:50%;transform:translateX(-50%);align-items:center}#pop div{font-size:12.5px}}
+body.t #bc{display:none}body.t #br{right:auto;left:50%;transform:translateX(-50%);bottom:calc(10px + var(--sb));padding:5px 14px;min-width:0;text-align:center;display:flex;gap:10px;align-items:baseline}body.t #wn{font-size:12px}
+@media (orientation:portrait){body.t #menu .tag:after{content:"　📱 横屏游玩体验更佳";color:var(--blue)}}
+@media (prefers-reduced-motion:reduce){.btn,.pc{transition:none}#ban.on,#pop div{animation-duration:.01s;animation-fill-mode:forwards;opacity:1}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="o"></canvas>
+<div id="hud" class="hide">
+  <div id="tl" class="card"><img id="av" alt="" /><div><div id="hpt"><span>豆包</span><b id="hpn">100</b></div><div class="bar" id="hp"><i></i></div><div class="bar" id="st"><i></i></div><div id="buff"></div></div></div>
+  <div id="tc" class="card"><div id="wv">第 <b>1</b> 波</div><div id="en"></div><div id="boss" class="hide"><span>幻觉之王</span><div class="bar"><i></i></div></div></div>
+  <div id="tr" class="card"><div id="sc"><small>SCORE</small><span>0</span></div><div id="cb"></div><div id="cbb"></div></div>
+  <div id="br" class="card"><div id="wn"></div><div id="am"></div><div id="ws"></div></div>
+  <div id="bc">
+    <div class="sk" id="sk1">🔔<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" stroke="#1f6bff" stroke-dasharray="182.2"/></svg><kbd>F</kbd></div>
+    <div class="sk" id="sk2">🧠<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" stroke="#7a5cff" stroke-dasharray="182.2"/></svg><kbd>Q</kbd></div>
+  </div>
+  <div id="say"><img alt="" /><div></div></div>
+  <div id="pop"></div>
+  <div id="ban"><b></b><span></span></div>
+</div>
+<div id="touch">
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tb" id="tf" data-a="fire">开火</div><div class="tb" id="tj" data-a="jump">跳</div><div class="tb" id="tsp" data-a="sprint">冲刺</div>
+  <div class="tb" id="tbe" data-a="bell">🔔</div><div class="tb" id="tsk" data-a="skill">🧠</div><div class="tb" id="tw" data-a="wnext">换枪</div><div class="tb" id="tre" data-a="reload">换弹</div>
+  <div class="tb" id="tp" data-a="pause">II</div>
+</div>
+<div id="menu" class="ov hide"><div class="box card">
+  <img id="mav" alt="豆包" />
+  <div>
+    <h1>豆包单车大作战<small>DOUBAO BIKE BLASTER</small></h1>
+    <div class="tag">满城的 Bug 和「幻觉」跑出来了！骑上单车、带上玩具爆能枪，帮豆包把它们一只只修掉。<br />撑过一波又一波，每 5 波迎战「幻觉之王」。</div>
+    <button class="btn" id="go">开始骑行 ▶</button>
+    <div class="keys">
+      <div><kbd>W A S D</kbd>骑行（方向相对镜头）</div><div><kbd>鼠标</kbd>瞄准 · 左键开火 · 右键精瞄</div><div><kbd>空格</kbd>跳跃 / 起跳台腾空</div><div><kbd>Shift</kbd>冲刺（消耗体力）</div>
+      <div><kbd>1-4 / 滚轮</kbd>切换武器</div><div><kbd>R</kbd>换弹</div><div><kbd>F</kbd>车铃冲击波（震退 + 清弹幕）</div><div><kbd>Q</kbd>深度思考（子弹时间）</div><div><kbd>Esc</kbd>暂停 · <kbd>M</kbd>音乐</div><div>支持触屏与手柄</div>
+    </div>
+    <div class="opt">
+      <label>画质 <select id="oq"><option value="auto">自动</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="ultra">极致</option></select></label>
+      <label>灵敏度 <input id="os1" type="range" min="0.3" max="2.5" step="0.05" /></label>
+      <label>音量 <input id="ov" type="range" min="0" max="1" step="0.05" /></label>
+      <label>音乐 <input id="om" type="range" min="0" max="1" step="0.05" /></label>
+      <label><input id="oa" type="checkbox" /> 准星对准自动开火</label>
+    </div>
+  </div>
+  <div class="foot"><span>零素材 · 模型 / 贴图 / 音效 / 配乐全部由代码实时生成 · Three.js + 自建后处理</span><span>最高分 <b id="best">0</b></span>
+    <span><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener">GitHub 源码</a> · <a href="https://x.com/riba2534" target="_blank" rel="noopener">作者 X</a> · 非官方粉丝作品，与豆包官方无关</span></div>
+</div></div>
+<div id="perk" class="ov hide"><div class="box"><h2>选择一项强化</h2><p id="pkt"></p><div id="pk"></div></div></div>
+<div id="pause" class="ov hide"><div class="box card"><h2>暂停</h2><p class="tag">点击继续回到战场</p><button class="btn" id="res">继续 ▶</button> <button class="btn g" id="quit">回到主菜单</button></div></div>
+<div id="over" class="ov hide"><div class="box card"><h2 id="ot">豆包需要充会儿电…</h2><div id="osay"></div><div id="os"></div><button class="btn" id="again">再来一局 ↻</button> <button class="btn g" id="home">主菜单</button></div></div>
+<div id="boot"><div><b>豆包单车大作战</b>正在用代码生成整座城市…<i></i></div></div>
+<script>/*APP_JS*/</script>
+</body>
+</html>

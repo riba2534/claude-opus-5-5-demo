@@ -1,0 +1,17 @@
+{
+  "name": "doubao-bike-blaster",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "豆包单车大作战：手写 WebGL2 引擎、零素材、全程序化生成的 3D 单车枪战游戏",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  }
+}

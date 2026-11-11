@@ -131,6 +131,14 @@ node build.mjs    # 构建产物输出到 dist/index.html
 - **线上修复** — 鹈鹕上线后偶发黑屏，模型通过人为注入 NaN 复现定位（Bloom 遇无效像素扩散成黑块），加了泛光前清理 pass 并修了海面菲涅尔等两处源头，重新部署
 - **部署运维** — 三个游戏分别完成 CDN 上传与缓存刷新、Cloudflare Pages 项目创建、域名绑定与证书等待、旧项目清理核对
 
+## 追加：Fable 5.2 · 豆包单车大作战
+
+2026-11 用 Claude Fable 5.2 追加的一个同类实测，放在 [`fable5.2鹈鹕测试/`](fable5.2鹈鹕测试/)：骑自行车的豆包对抗满城 Bug 的第三人称 3D 枪战游戏。
+
+- 在线体验：<https://fable-5-2-doubao.riba2534.cn/>
+- 同样是单会话生成、单文件 HTML、零外部资源；Three.js r186 + PBR 注入材质 + 自建后处理链（AO、体积光、运动模糊、Bloom、自动曝光、FXAA），音效与配乐由 Web Audio 实时合成
+- 提示词原文、玩法、技术细节与自测记录见该目录下的 [README](fable5.2鹈鹕测试/README.md)
+
 ## 说明
 
 - 本仓库由 Claude Opus 5.5 在 Claude Code 中生成（2026-09）；三个游戏的源码、README 均为模型输出原样，人工未做改动
