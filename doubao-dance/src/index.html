@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>豆包炫舞 · 和豆包一起踩着节拍跳舞</title>
-<meta name="description" content="浏览器里的 3D 节奏舞蹈游戏：敲方向键、踩重拍，和豆包一起赢下舞会。Three.js + WebAudio 全程序化生成，无任何外部素材。" />
+<meta name="description" content="浏览器里的 3D 节奏舞蹈游戏：敲方向键、踩重拍，和豆包一起赢下舞会。Three.js + WebAudio，舞台、动作和音乐全部由代码生成。" />
 <meta name="theme-color" content="#0a0820" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236fa8ff'/%3E%3Cstop offset='1' stop-color='%23ff7eb6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Ccircle cx='32' cy='35' r='17' fill='%23ffe2d0'/%3E%3Cpath d='M13 35a19 19 0 0 1 38 0c-4-9-12-12-19-9-7-3-15 0-19 9z' fill='%231d1a24'/%3E%3Ccircle cx='25' cy='38' r='3.2' fill='%233a2414'/%3E%3Ccircle cx='39' cy='38' r='3.2' fill='%233a2414'/%3E%3Cpath d='M27 45q5 4 10 0' stroke='%233a2414' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
 <style>
@@ -59,7 +59,7 @@
         <a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>GitHub 源码</a>
         <a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>关注作者 X</a>
       </div>
-      <p class="fine">Three.js · WebAudio · 模型、贴图、音乐全部由代码生成 · 非官方同人作品</p>
+      <p class="fine">Three.js · WebAudio · 豆包形象取自官方头像，舞台、动作、音乐由代码生成 · 非官方同人作品</p>
     </div>
   </section>
 
@@ -99,7 +99,7 @@
         </div>
         <div class="help-card">
           <h3><i class="dot blue"></i>节拍</h3>
-          <p>音符顺着轨道落下，到达判定线时按对应方向键，也可以用 <kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd>。</p>
+          <p>音符顺着轨道落下，到达判定线时按对应方向键。</p>
           <p class="muted">连击越长，每个音符得分越高。</p>
         </div>
         <div class="help-card">
@@ -114,7 +114,7 @@
         </div>
       </div>
       <div class="keys">
-        <span><kbd>←</kbd><kbd>↓</kbd><kbd>↑</kbd><kbd>→</kbd> / <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 方向</span>
+        <span><kbd>←</kbd><kbd>↓</kbd><kbd>↑</kbd><kbd>→</kbd> / <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>H</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> 方向</span>
         <span><kbd>空格</kbd> 踩拍</span>
         <span><kbd>Esc</kbd> 暂停</span>
         <span>触屏：点屏幕上的方向键和圆环 · 也支持手柄</span>

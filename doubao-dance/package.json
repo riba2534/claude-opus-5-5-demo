@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "豆包炫舞：Three.js + WebAudio 全程序化生成的 3D 节奏舞蹈游戏，单文件 HTML，零外部素材",
+  "description": "豆包炫舞：Three.js + WebAudio 的 3D 节奏舞蹈游戏，单文件 HTML；豆包的头部取自官方头像，其余全部程序化生成",
   "scripts": {
     "build": "node build.mjs",
     "dev": "node build.mjs --dev",

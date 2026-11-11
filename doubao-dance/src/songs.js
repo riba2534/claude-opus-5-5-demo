@@ -261,7 +261,7 @@ export const SONGS = [
         ],
       },
       build: {
-        chords: [5, 5, 6, 6],
+        chords: [5, 6, 0, 0],
         kick: [FOUR, FOUR, EIGHTHS, ''],
         snare: [FOUR, EIGHTHS, 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxxxxxx'],
         roll: true,
@@ -352,9 +352,10 @@ export const MODES = {
 };
 
 export const DIFFS = {
-  easy: { id: 'easy', name: '简单', start: 1, slope: 0.3, max: 6, rev: 0, gap: 4, dbl: 0, rival: 0.9 },
-  normal: { id: 'normal', name: '普通', start: 2, slope: 0.36, max: 8, rev: 0.07, gap: 2, dbl: 0.12, rival: 0.96 },
-  hard: { id: 'hard', name: '困难', start: 3, slope: 0.45, max: 9, rev: 0.2, gap: 1, dbl: 0.22, rival: 1.02 },
+  // kps：这一档允许的每秒键数，序列长度按它和歌曲速度封顶；fill：在八分音符之间补十六分音符的概率
+  easy: { id: 'easy', name: '简单', start: 1, slope: 0.3, max: 6, kps: 2, rev: 0, gap: 4, dbl: 0, fill: 0, rival: 0.85 },
+  normal: { id: 'normal', name: '普通', start: 2, slope: 0.36, max: 8, kps: 3, rev: 0.07, gap: 2, dbl: 0.12, fill: 0, rival: 0.96 },
+  hard: { id: 'hard', name: '困难', start: 3, slope: 0.45, max: 9, kps: 4.5, rev: 0.2, gap: 1, dbl: 0.22, fill: 0.34, rival: 1.02 },
 };
 
 // ---------------------------------------------------------------- 查询工具
@@ -451,9 +452,20 @@ export function buildChart(song, modeId, diffId) {
   let lane = 1;
   let prevDeg = 0;
   let sameCount = 0;
+  let prevType = 'rest';
+  // 一小节里敲得完多少个键取决于歌有多快。按每秒键数给序列长度封顶，
+  // 不然 150 BPM 的简单档会比 104 BPM 的困难档还难。0.35 秒是留给读谱的时间。
+  const barSec = 240 / song.bpm;
+  const cap = clamp(Math.floor((barSec - 0.35) * diff.kps), diff.start + 1, diff.max);
+  const seqRounds = song.secs.reduce((n, s) => n + (playType(modeId, s.kind) === 'seq' ? s.bars : 0), 0);
+  // 用全曲四分之三的回合爬到顶，而不是第一段副歌就到顶、之后原地不动
+  const slope = Math.min(diff.slope, (cap - diff.start) / Math.max(1, 0.75 * seqRounds));
 
   song.secs.forEach((sec, si) => {
     const type = playType(modeId, sec.kind);
+    // 上一段的最后一个舞步在第 4 拍判定，紧接着的音符要给出反应和换手的时间
+    const leadIn = prevType === 'seq' ? 8 : 0;
+    prevType = type;
     const startBeat = sec.start * 4;
     const endBeat = (sec.start + sec.bars) * 4;
     segments.push({ type, kind: sec.kind, label: sec.label, startBeat, endBeat, index: si });
@@ -463,8 +475,8 @@ export function buildChart(song, modeId, diffId) {
 
     if (type === 'seq') {
       for (let b = 0; b < sec.bars; b++) {
-        let level = Math.round(diff.start + diff.slope * seqIndex) + (sec.kind === 'chorus' ? 1 : 0);
-        level = clamp(level, 1, diff.max);
+        let level = Math.round(diff.start + slope * seqIndex) + (sec.kind === 'chorus' ? 1 : 0);
+        level = clamp(level, 1, cap);
         seqIndex++;
         rounds.push({
           id: rounds.length,
@@ -477,7 +489,7 @@ export function buildChart(song, modeId, diffId) {
         });
       }
     } else if (type === 'finish') {
-      const n = Math.min(diff.max + 2, 11);
+      const n = Math.min(cap + 2, 11);
       rounds.push({
         id: rounds.length,
         bar: sec.start,
@@ -489,20 +501,29 @@ export function buildChart(song, modeId, diffId) {
       });
     } else if (type === 'notes' || type === 'notesEnd') {
       const playBars = type === 'notesEnd' ? 2 : sec.bars;
+      const fill = diff.fill * clamp(120 / song.bpm, 0.6, 1.2);
+      let lastAbs = -99;
       for (let b = 0; b < playBars; b++) {
         let line = track(pat, 'lead', b);
         if (!line) line = FOUR;
         const lastBar = b === playBars - 1;
-        let lastPos = -99;
+        const has = (pos) => pos >= 0 && pos < 16 && line[pos] != null && line[pos] !== '.' && line[pos] !== '-';
+        const barNotes = [];
         for (let pos = 0; pos < 16; pos++) {
-          const ch = line[pos];
-          if (ch === '.' || ch === '-' || ch == null) continue;
+          if (!has(pos)) continue;
+          if (b === 0 && pos < leadIn) continue;
           // 下一段要敲舞步序列时，空出最后一拍给玩家换手
           if (lastBar && type === 'notes' && (nextType === 'seq' || nextType === 'finish') && pos >= 12) continue;
-          if (pos - lastPos < diff.gap) continue;
-          if (diff.gap >= 4 && pos % 2 !== 0) continue;
-          lastPos = pos;
-          const deg = noteDeg(ch);
+          if (diff.gap >= 4) {
+            // 简单档只留整拍上的音。反拍的音只有在前后两个整拍都空着时才留，免得热身曲变成一串切分
+            if (pos % 2 !== 0) continue;
+            if (pos % 4 !== 0 && (has(pos - 2) || has(pos + 2))) continue;
+          }
+          // 间隔按整段连续计算，不在小节线上清零
+          const abs = b * 16 + pos;
+          if (abs - lastAbs < diff.gap) continue;
+          lastAbs = abs;
+          const deg = noteDeg(line[pos]);
           const d = deg == null ? prevDeg : deg;
           if (d > prevDeg) {
             lane += 1;
@@ -519,9 +540,29 @@ export function buildChart(song, modeId, diffId) {
           prevDeg = d;
           const beat = (sec.start + b) * 4 + pos / 4;
           notes.push({ id: notes.length, beat, lane });
+          barNotes.push({ pos, lane });
           // 重拍上偶尔加一个双押
           if (pos % 8 === 0 && r() < diff.dbl) {
             notes.push({ id: notes.length, beat, lane: (lane + 2) % 4 });
+          }
+        }
+        // 困难档：在相邻两个八分音符之间补一个十六分音符。
+        // 只补在伴奏里确实有声音的位置（十六分的琶音或踩镲），手上敲的每一下都能听到对应的音。
+        if (fill > 0) {
+          const hat = track(pat, 'hat', b);
+          let added = 0;
+          for (let i = 0; i + 1 < barNotes.length && added < 3; i++) {
+            const a = barNotes[i];
+            const c = barNotes[i + 1];
+            if (c.pos - a.pos !== 2) continue;
+            const pos = a.pos + 1;
+            if (!(pat.arp === 16 || hat[pos] === 'x') || r() >= fill) continue;
+            // 放在两边都没占的轨道上，不出现十六分的同轨连打
+            const mid = (a.lane + c.lane) / 2;
+            const free = [0, 1, 2, 3].filter((l) => l !== a.lane && l !== c.lane).sort((x, y) => Math.abs(x - mid) - Math.abs(y - mid));
+            notes.push({ id: notes.length, beat: (sec.start + b) * 4 + pos / 4, lane: free[0] });
+            added++;
+            i++;
           }
         }
       }

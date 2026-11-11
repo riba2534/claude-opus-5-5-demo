@@ -56,17 +56,38 @@ await page.waitForTimeout(900);
 const b2 = (await st()).beat;
 await log('暂停');
 await expect((await st()).s === 'paused' && Math.abs(b2 - b1) < 0.05, `暂停期间节拍还在走 ${b1}→${b2}`);
-await page.click('#btnResume'); await page.waitForTimeout(700);
-await log('继续');
+await page.click('#btnResume'); await page.waitForTimeout(500);
+await expect((await st()).s === 'resuming', '继续时没有进入倒数');
+await page.keyboard.press('Escape'); await page.waitForTimeout(100);   // 倒数期间按 Esc 不应有反应
+await expect((await st()).s === 'resuming', '倒数期间 Esc 不该改变状态');
+await page.waitForTimeout(1500);
+await log('继续（倒数结束）');
 await expect((await st()).s === 'playing' && (await st()).beat > b2 + 0.3, '继续后节拍没有前进');
 await page.keyboard.press('Escape'); await page.waitForTimeout(300);
-await page.click('#btnRestart'); await page.waitForTimeout(700);
+await page.click('#btnRestart');
+await page.keyboard.press('Escape');   // 重开的同时再按 Esc：以前会把状态搅乱
+await page.waitForTimeout(700);
 await log('重新开始');
 await expect((await st()).beat < 2 && (await st()).score === 0, '重开后节拍/分数没有清零');
 await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 await page.click('#btnQuit'); await page.waitForTimeout(800);
 await log('返回选歌');
 await expect((await st()).s === 'select', '没有回到选歌');
+await expect(!(await page.isVisible('#top')) && !(await page.isVisible('#pause')), '回到选歌后对局界面或暂停面板还在');
+
+// WASD 与 HJKL 在节拍玩法里都应当对应到正确的轨道
+await page.click('#modeSeg button:nth-child(2)');
+await page.click('#btnGo'); await page.waitForTimeout(600);
+const lanes = await page.evaluate(() => {
+  const g = window.__game.game; const seen = []; const orig = g.arrow;
+  g.arrow = (dir, b) => { seen.push(dir); return orig(dir, b); };
+  for (const code of ['KeyA', 'KeyS', 'KeyW', 'KeyD', 'KeyH', 'KeyJ', 'KeyK', 'KeyL']) window.dispatchEvent(new KeyboardEvent('keydown', { code }));
+  g.arrow = orig; return seen.join('');
+});
+console.log('  节拍玩法键位 WASD+HJKL →', lanes);
+await expect(lanes === '01230123', '节拍玩法下 WASD / HJKL 键位不对');
+await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+await page.click('#btnQuit'); await page.waitForTimeout(600);
 await page.screenshot({ path: '/tmp/dd-shots/flow-select.jpg', type: 'jpeg', quality: 60 });
 console.log(errs.length ? '报错：\n' + errs.join('\n') : '无报错');
 console.log(ok ? '流程检查通过' : '流程检查有失败项');

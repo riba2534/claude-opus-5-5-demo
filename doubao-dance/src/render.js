@@ -9,7 +9,8 @@ import { clamp, damp } from './util.js';
 
 export const QUALITY = {
   high: { name: 'high', dpr: 2, msaa: 4, bloom: true, reflect: true, reflectSize: 768, crowd: 260, particles: 1600, rivalOutline: true },
-  medium: { name: 'medium', dpr: 1.5, msaa: 2, bloom: true, reflect: true, reflectSize: 512, crowd: 180, particles: 1200, rivalOutline: true },
+  // 手机默认落在这一档：镜面反射要把整个场景多画一遍，对手描边又把角色的绘制次数翻倍，这两样都关掉
+  medium: { name: 'medium', dpr: 1.5, msaa: 2, bloom: true, reflect: false, reflectSize: 512, crowd: 160, particles: 1200, rivalOutline: false },
   low: { name: 'low', dpr: 1, msaa: 0, bloom: true, reflect: false, reflectSize: 256, crowd: 90, particles: 700, rivalOutline: false },
 };
 
@@ -236,7 +237,13 @@ export function createRender(canvas, quality) {
   let frames = 0;
   let cool = 2;
   R.stats = { fps: 60, scale: 1, calls: 0, tris: 0 };
+  let pendingResize = false;
   R.frame = (dt) => {
+    // 改画布尺寸会把画布清空，所以放在这一帧开画之前做，不能在画完之后
+    if (pendingResize) {
+      pendingResize = false;
+      R.resize();
+    }
     fin.uniforms.uFlash.value = Math.max(0, fin.uniforms.uFlash.value - dt * 2.5);
     fin.uniforms.uAberr.value = damp(fin.uniforms.uAberr.value, 0.0015, 6, dt);
     renderer.info.reset();
@@ -255,11 +262,11 @@ export function createRender(canvas, quality) {
         if (fps < 45 && scale > 0.55) {
           scale = Math.max(0.55, scale * 0.85);
           cool = 2;
-          R.resize();
+          pendingResize = true;
         } else if (fps > 57 && scale < 1) {
           scale = Math.min(1, scale * 1.08);
           cool = 3;
-          R.resize();
+          pendingResize = true;
         }
       }
       R.stats.scale = scale;

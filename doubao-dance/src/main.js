@@ -5,6 +5,7 @@ import { createSequencer, createClock } from './music.js';
 import { SONGS, LOBBY, MODES, DIFFS, prepareSong, songSeconds } from './songs.js';
 import { createGame } from './game.js';
 import { createDancer } from './character.js';
+import { loadDoubaoHead, DOUBAO_AVATAR } from './dbhead.js';
 import { createAnimator, choreoFor, FREE_POSES, MOVES } from './dance.js';
 import { createStage } from './stage.js';
 import { createRender, pickQuality } from './render.js';
@@ -85,8 +86,24 @@ async function boot() {
   ];
   const dancers = [];
   const animators = [];
+  // 官方头像贴图解码失败时退回几何体拼的头，游戏照常能玩
+  let headAssets = null;
+  try {
+    headAssets = await loadDoubaoHead();
+  } catch (e) {
+    console.warn('[boot] 豆包头部贴图载入失败，使用备用头部', e);
+  }
+  if (headAssets) {
+    for (const el of document.querySelectorAll('.avatar')) {
+      el.textContent = '';
+      el.classList.add('img');
+      el.style.backgroundImage = `url(${DOUBAO_AVATAR})`;
+    }
+    const icon = document.querySelector('link[rel="icon"]');
+    if (icon) icon.href = DOUBAO_AVATAR;
+  }
   for (let i = 0; i < IDS.length; i++) {
-    const d = createDancer(IDS[i], { outline: i === 0 || quality.rivalOutline, faceSize: i === 0 ? 512 : 256 });
+    const d = createDancer(IDS[i], { outline: i === 0 || quality.rivalOutline, faceSize: i === 0 ? 512 : 256, officialHead: i === 0 ? headAssets : null });
     d.root.position.set(SPOTS[i][0], SPOTS[i][1], SPOTS[i][2]);
     if (i > 0) d.root.scale.setScalar(0.97);
     R.scene.add(d.root);
@@ -122,6 +139,7 @@ async function boot() {
   let overlayFrom = 'title';
   let lastResult = null;
   let showcaseBar = -1;
+  let resultsAt = 0;
   let lastSegType = '';
   const timers = [];
   const later = (fn, ms) => timers.push(setTimeout(fn, ms));
@@ -130,16 +148,23 @@ async function boot() {
   };
 
   // ------------------------------------------------------------ 界面切换
+  // starting：等音频解锁；resuming：暂停后继续前的倒数
+  const inGame = () => state === 'playing' || state === 'paused' || state === 'starting' || state === 'resuming';
+  // 每次切换流程都加一，异步等待回来后发现对不上就放弃，避免连点造成状态错乱
+  let flow = 0;
   const SCREENS = ['title', 'select', 'help', 'settings', 'pause', 'results'];
   function show(name) {
     for (const s of SCREENS) $(s).classList.toggle('hidden', s !== name);
-    $('top').classList.toggle('hidden', !(state === 'playing' || state === 'paused'));
+    $('top').classList.toggle('hidden', !inGame());
   }
+  // 和 style.css 里的媒体查询是同一条规则：手机竖屏和竖屏平板都走这套布局
   function portrait() {
-    return R.aspect < 0.85;
+    return R.width <= 760 || R.aspect < 0.85;
   }
   function applyCamera() {
     const d = R.director;
+    // 标题页只留豆包一个人：对手的站位正好在标题和按钮后面
+    for (let i = 1; i < dancers.length; i++) dancers[i].root.visible = state !== 'title';
     if (state === 'title') {
       d.stopSequence();
       d.set('title');
@@ -151,14 +176,15 @@ async function boot() {
     } else if (state === 'results') {
       d.stopSequence();
       d.set('results');
-      R.setShift(portrait() ? 0 : 0.24, portrait() ? 0.22 : 0);
-    } else if (state === 'playing' || state === 'paused') {
+      // 竖屏的结算面板从底部升起来，把主角往上让到面板上方
+      R.setShift(portrait() ? 0 : 0.24, portrait() ? 0.34 : 0);
+    } else if (inGame()) {
       R.setShift(0, playShift());
     }
   }
   // 游戏中把画面上移给操作区让位；节拍轨道更高，需要多让一点
   function playShift() {
-    return (portrait() || hud.touch ? 0.17 : 0.13) + (hud.noteA > 0.5 ? 0.06 : 0);
+    return (portrait() || hud.touch ? 0.17 : 0.15) + (hud.noteA > 0.5 ? 0.1 : 0);
   }
 
   // 豆包的气泡
@@ -166,6 +192,8 @@ async function boot() {
   let bubbleCool = 0;
   function say(text, force = false) {
     if (!force && bubbleCool > 0) return;
+    // 窄屏上横幅和气泡挤在同一块位置，横幅优先
+    if (portrait() && hud.bannerActive()) return;
     $('bubbleText').textContent = text;
     const el = $('bubble');
     el.classList.remove('hidden');
@@ -177,9 +205,17 @@ async function boot() {
   }
 
   // ------------------------------------------------------------ 大厅
+  let lobbyBusy = false;
   async function startLobby() {
-    if (state === 'playing' || state === 'paused') return;
-    await audio.resume();
+    if (lobbyOn || lobbyBusy || inGame()) return;
+    lobbyBusy = true;
+    try {
+      await audio.resume();
+    } finally {
+      lobbyBusy = false;
+    }
+    // 等音频解锁的这一小会儿里，玩家可能已经点了开局
+    if (lobbyOn || inGame()) return;
     audio.duck(1, 0.3);
     prepareSong(LOBBY);
     stage.setPalette(LOBBY.palette);
@@ -200,13 +236,18 @@ async function boot() {
 
   // ------------------------------------------------------------ 开始一局
   async function startGame(song, mode, diff) {
+    const my = ++flow;
     clearTimers();
     seq.stop();
     lobbyOn = false;
+    state = 'starting';
+    input.playing = false;
     cur = { song, mode, diff };
     store.last = { song: song.id, mode, diff };
     saveStore(store);
+    show(null);
     await audio.resume();
+    if (my !== flow) return;
     audio.duck(1, 0.05);
     prepareSong(song);
     game.start(song, mode, diff, { auto: !!params.auto, autoSkill: params.skill == null ? 1 : +params.skill, seed: (Date.now() & 0xfffff) + 7 });
@@ -245,15 +286,37 @@ async function boot() {
     show('pause');
     $('btnResume').focus();
   }
-  async function resumeGame() {
+  // 继续之前倒数三下，给玩家把手放回键位的时间
+  function resumeGame() {
     if (state !== 'paused') return;
+    const my = ++flow;
+    state = 'resuming';
     show(null);
-    await clock.resume();
-    state = 'playing';
-    input.playing = true;
-    $('top').classList.remove('hidden');
+    const tick = (n) => {
+      if (my !== flow) return;
+      if (n > 0) {
+        hud.banner(String(n), { dur: 0.5, size: 1.15, y: 0.2, replace: true, color2: '#9fc0ff' });
+        setTimeout(() => tick(n - 1), 430);
+        return;
+      }
+      clock.resume().then(() => {
+        if (my !== flow) return;
+        state = 'playing';
+        input.playing = true;
+      });
+    };
+    tick(3);
+  }
+  // 倒数途中切到后台：回到暂停菜单
+  function cancelResume() {
+    if (state !== 'resuming') return;
+    flow++;
+    state = 'paused';
+    clock.pause();
+    show('pause');
   }
   async function quitToSelect() {
+    flow++;
     clearTimers();
     seq.stop();
     game.stop();
@@ -460,8 +523,8 @@ async function boot() {
       audio.sfx.fanfare();
       stage.confetti(160);
     }
+    resultsAt = performance.now();
     startLobby();
-    $('btnAgain').focus();
   }
 
   // ------------------------------------------------------------ 选歌界面
@@ -543,16 +606,20 @@ async function boot() {
   click('btnGo', () => startGame(cur.song, cur.mode, cur.diff));
   click('btnPause', pauseGame);
   click('btnResume', resumeGame);
-  click('btnRestart', async () => {
-    await clock.resume();
-    startGame(cur.song, cur.mode, cur.diff);
+  // 这两个按钮不能先等音频恢复再动手：等待期间再按一次 Esc 就会把状态搅乱
+  click('btnRestart', () => {
+    if (state === 'paused') startGame(cur.song, cur.mode, cur.diff);
   });
-  click('btnQuit', async () => {
-    await clock.resume();
-    quitToSelect();
+  click('btnQuit', () => {
+    if (state === 'paused') quitToSelect();
   });
-  click('btnAgain', () => startGame(cur.song, cur.mode, cur.diff));
+  // 结算刚出现的一小段时间里不响应：玩家可能还在跟着尾奏敲空格
+  const resultsSettled = () => state === 'results' && performance.now() - resultsAt > 900;
+  click('btnAgain', () => {
+    if (resultsSettled()) startGame(cur.song, cur.mode, cur.diff);
+  });
   click('btnOther', () => {
+    if (!resultsSettled()) return;
     state = 'select';
     resetDancers();
     stage.setMode('lobby');
@@ -623,11 +690,26 @@ async function boot() {
       if (!lobbyOn && (state === 'title' || state === 'select')) startLobby();
     },
   });
+  // 切到后台：对局中自动暂停；菜单和结算界面把音乐停掉，回来再接着放
+  let bgSuspended = false;
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && state === 'playing' && !params.auto) pauseGame();
+    if (params.auto) return;
+    if (document.hidden) {
+      if (state === 'playing') pauseGame();
+      else if (state === 'resuming') cancelResume();
+      else if (state !== 'paused' && audio.ok && audio.ctx.state === 'running') {
+        audio.suspend();
+        bgSuspended = true;
+      }
+    } else if (bgSuspended) {
+      bgSuspended = false;
+      if (state !== 'paused') audio.resume();
+    }
   });
   window.addEventListener('blur', () => {
-    if (state === 'playing' && !params.auto) pauseGame();
+    if (params.auto) return;
+    if (state === 'playing') pauseGame();
+    else if (state === 'resuming') cancelResume();
   });
   const onResize = () => {
     R.resize();
@@ -648,7 +730,11 @@ async function boot() {
       if (bubbleT <= 0) $('bubble').classList.add('hidden');
     }
     bubbleCool = Math.max(0, bubbleCool - dt);
-    if (state !== 'playing' && state !== 'paused') return;
+    if (bubbleT > 0 && portrait() && hud.bannerActive()) {
+      bubbleT = 0;
+      $('bubble').classList.add('hidden');
+    }
+    if (!inGame() || !game.me) return;
     const me = game.me;
     me.shown += (me.score - me.shown) * Math.min(1, dt * 12);
     $('score').textContent = fmtScore(me.shown);
@@ -657,7 +743,8 @@ async function boot() {
     $('gauge').style.width = (me.gauge * 100).toFixed(1) + '%';
     gb.classList.toggle('fever', me.fever);
     gb.classList.toggle('full', !me.fever && me.gauge >= 1);
-    $('gaugeText').textContent = me.fever ? '灵感爆发  ×2' : me.gauge >= 1 ? '下一小节爆发！' : '灵感值';
+    const tight = portrait();
+    $('gaugeText').textContent = me.fever ? (tight ? '爆发 ×2' : '灵感爆发  ×2') : me.gauge >= 1 ? (tight ? '即将爆发' : '下一小节爆发！') : '灵感值';
     domT -= dt;
     if (domT <= 0) {
       domT = 0.12;
@@ -706,7 +793,7 @@ async function boot() {
       if (state === 'playing' && !params.shot) R.setShift(0, playShift());
       R.director.update(dt, beat);
       R.frame(dt);
-      hud.draw(game, beat, dt, state === 'playing' || state === 'paused');
+      hud.draw(game, beat, dt, inGame() && state !== 'starting');
       updateDom(dt);
       window.__frames = (window.__frames || 0) + 1;
       if (window.__frames === 3) window.__ready = true;
@@ -727,6 +814,8 @@ async function boot() {
   show('title');
   applyCamera();
   if (params.nohud) document.body.classList.add('nohud');
+  // 调试：把豆包转到指定角度，检查侧面和背面
+  if (params.turn) doubao.root.rotation.y = (+params.turn * Math.PI) / 180;
   if (params.shot) {
     // 调试：固定机位，不让界面状态改镜头
     R.director.stopSequence();

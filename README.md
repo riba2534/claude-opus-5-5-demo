@@ -141,11 +141,13 @@ node build.mjs    # 构建产物输出到 dist/index.html
 
 ## 追加：Fable 5.2 · 豆包炫舞
 
-2026-11 用 Claude Fable 5.2 追加的另一个实测，放在 [`doubao-dance/`](doubao-dance/)：和 Q 版豆包同台的 3D 节奏舞蹈游戏，敲方向键序列、踩重拍、打下落音符，和三位 AI 对手比分。
+2026-11 用 Claude Fable 5.2 追加的另一个实测，放在 [`doubao-dance/`](doubao-dance/)：和豆包同台的 3D 节奏舞蹈游戏，敲方向键序列、踩重拍、打下落音符，和三位 AI 对手比分。
 
 - 在线体验：<https://fable-5-2-doubao-dance.riba2534.cn/>
-- 同样是单会话生成、单文件 HTML、零外部资源；Three.js r186 卡通渲染 + 镜面反射 LED 舞台 + Bloom 后处理，三首原创曲和全部音效由 Web Audio 实时合成，判定以音频时钟为准
-- 提示词原文、玩法、技术细节与自测记录见该目录下的 [README](doubao-dance/README.md)
+- 单文件 HTML；Three.js r186 卡通渲染 + LED 舞台 + Bloom 后处理，三首原创曲和全部音效由 Web Audio 实时合成，判定以音频时钟为准
+- 豆包的头取自官方应用图标，运行时鼓成立体的浮雕头；这是本仓库里唯一用到外部素材的地方，其余仍是程序化生成
+- 两轮提示词：第一轮生成并上线，第二轮派五个代理找素材和做审查（代码缺陷、画面布局、玩法数值），按结论迭代后重新上线
+- 提示词原文、形象来源、审查结论与自测记录见该目录下的 [README](doubao-dance/README.md)
 
 ## 说明
 

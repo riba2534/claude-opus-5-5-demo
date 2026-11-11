@@ -3,7 +3,8 @@ import { clamp } from './util.js';
 
 const KEY_ARROW = { ArrowLeft: 0, ArrowDown: 1, ArrowUp: 2, ArrowRight: 3 };
 const KEY_WASD = { KeyA: 0, KeyS: 1, KeyW: 2, KeyD: 3 };
-const KEY_DFJK = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
+// 右手党的备选键位：和方向一一对应（H 左 J 下 K 上 L 右），不和 WASD 冲突
+const KEY_HJKL = { KeyH: 0, KeyJ: 1, KeyK: 2, KeyL: 3 };
 
 export function createInput({ hud, canvas, onArrow, onBeat, onPause, onFirstGesture }) {
   const input = { playing: false };
@@ -35,9 +36,8 @@ export function createInput({ hud, canvas, onArrow, onBeat, onPause, onFirstGest
       onBeat(e.timeStamp);
       return;
     }
-    // 节拍模式下用 D F J K 四键，舞步模式下 WASD 等同方向键
-    const map = hud.phase === 'notes' ? KEY_DFJK : KEY_WASD;
-    if (code in map) onArrow(map[code], e.timeStamp);
+    const lane = KEY_WASD[code] ?? KEY_HJKL[code];
+    if (lane != null) onArrow(lane, e.timeStamp);
   });
 
   const setTouch = (on) => {

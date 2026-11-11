@@ -93,7 +93,7 @@ const WALL_FRAG = /* glsl */ `
     vec2 cell = floor(vUv * grid);
     vec2 f = fract(vUv * grid);
     vec2 cuv = (cell + 0.5) / grid;
-    float dotMask = smoothstep(0.5, 0.28, length(f - 0.5));
+    float dotMask = 1.0 - smoothstep(0.28, 0.5, length(f - 0.5));
     // 以中心对称的频谱柱
     float band = abs(cuv.x - 0.5) * 2.0;
     float amp = texture2D(uSpec, vec2(band * 0.8 + 0.02, 0.5)).r;
@@ -105,18 +105,20 @@ const WALL_FRAG = /* glsl */ `
     vec2 p = (cuv - vec2(0.5, 0.42)) * vec2(4.0, 1.0);
     float r = length(p);
     float ang = atan(p.y, p.x);
-    float rays = pow(0.5 + 0.5 * sin(ang * 12.0 + uTime * 0.7), 4.0) * smoothstep(1.6, 0.1, r);
-    float rings = pow(0.5 + 0.5 * sin(r * 12.0 - uBeat * 3.14159), 8.0) * smoothstep(1.8, 0.0, r);
+    float rays = pow(0.5 + 0.5 * sin(ang * 12.0 + uTime * 0.7), 4.0) * (1.0 - smoothstep(0.1, 1.6, r));
+    float rings = pow(0.5 + 0.5 * sin(r * 12.0 - uBeat * 3.14159), 8.0) * (1.0 - smoothstep(0.0, 1.8, r));
     float sparkle = step(0.965, hash21(cell + floor(uBeat * 2.0)));
     vec3 col = uCC * rays * 0.35 + uCD * rings * 0.5 * uEnergy + mix(uCA, uCC, hash21(cell)) * sparkle * uEnergy;
     col += barCol * bar * 0.85 + vec3(1.0) * cap * 0.9;
     // 中央的 LOGO / 歌名
-    vec2 luv = (vUv - vec2(0.5, 0.66)) * vec2(4.4, 3.0) + 0.5;
-    if (luv.x > 0.0 && luv.x < 1.0 && luv.y > 0.0 && luv.y < 1.0) {
-      vec4 lg = texture2D(uLogo, luv);
-      col = mix(col, lg.rgb * (1.5 + uPulse * 0.6), lg.a * uLogoMix);
-    }
+    vec2 luv = (vUv - vec2(0.5, 0.56)) * vec2(3.3, 2.3) + 0.5;
+    // 采样放在分支外面：分支里采样没有可靠的导数，个别显卡会在边界上出杂线
+    vec4 lg = texture2D(uLogo, clamp(luv, 0.0, 1.0));
+    float inLogo = step(0.0, luv.x) * step(luv.x, 1.0) * step(0.0, luv.y) * step(luv.y, 1.0);
     col *= dotMask * (0.4 + 0.5 * min(uEnergy, 1.25));
+    // 文字不过点阵：30 行的点阵分辨率不够，汉字会被打碎成认不出的点
+    float la = lg.a * uLogoMix * inLogo;
+    col = mix(col * (1.0 - 0.75 * inLogo * smoothstep(0.0, 0.2, la)), lg.rgb * (1.25 + uPulse * 0.45), la);
     col = min(col, vec3(1.8));
     gl_FragColor = vec4(col, 1.0);
   }`;
@@ -141,7 +143,8 @@ const BEAM_FRAG = /* glsl */ `
   varying vec3 vV;
   void main() {
     float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.8);
-    float fade = pow(1.0 - vAlong, 1.5) * smoothstep(0.0, 0.03, vAlong);
+    // 开 MSAA 时 varying 会在图元边缘被外推到 1 以外，负数做 pow 在部分显卡上得到 NaN，经泛光会扩散成整屏黑
+    float fade = pow(max(1.0 - vAlong, 0.0), 1.5) * smoothstep(0.0, 0.03, vAlong);
     gl_FragColor = vec4(uColor * edge * fade * uInt, 1.0);
   }`;
 
@@ -239,7 +242,7 @@ export function createStage(scene, opts = {}) {
           float h = vP.y;
           vec3 base = mix(vec3(0.035,0.02,0.09), vec3(0.004,0.006,0.03), smoothstep(-0.1, 0.7, h));
           float a = atan(vP.z, vP.x);
-          float glow = pow(0.5 + 0.5*sin(a*3.0 + uTime*0.12), 3.0) * smoothstep(0.5, -0.05, h) * smoothstep(-0.4, 0.0, h);
+          float glow = pow(0.5 + 0.5*sin(a*3.0 + uTime*0.12), 3.0) * (1.0 - smoothstep(-0.05, 0.5, h)) * smoothstep(-0.4, 0.0, h);
           vec3 col = base + mix(uCA, uCB, 0.5 + 0.5*sin(a*2.0 - uTime*0.07)) * glow * 0.1 * (0.5 + uEnergy);
           gl_FragColor = vec4(col, 1.0);
         }`,
@@ -272,7 +275,7 @@ export function createStage(scene, opts = {}) {
         blending: THREE.AdditiveBlending,
         uniforms: { uTime: { value: 0 }, uColor: { value: cur[2] } },
         vertexShader: 'attribute float aPhase; uniform float uTime; varying float vA; void main(){ vA = 0.35 + 0.65*pow(0.5+0.5*sin(uTime*1.7 + aPhase), 3.0); vec4 mv = modelViewMatrix*vec4(position,1.0); gl_PointSize = 90.0 / -mv.z; gl_Position = projectionMatrix*mv; }',
-        fragmentShader: 'uniform vec3 uColor; varying float vA; void main(){ float d = length(gl_PointCoord-0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(mix(vec3(1.0), uColor, 0.5) * a * vA * 1.4, 1.0); }',
+        fragmentShader: 'uniform vec3 uColor; varying float vA; void main(){ float d = length(gl_PointCoord-0.5); float a = 1.0 - smoothstep(0.0, 0.5, d); gl_FragColor = vec4(mix(vec3(1.0), uColor, 0.5) * a * vA * 1.4, 1.0); }',
       }),
     );
     group.add(st.farLights);
@@ -502,7 +505,7 @@ export function createStage(scene, opts = {}) {
       blending: THREE.AdditiveBlending,
       uniforms: { uScale: { value: 600 } },
       vertexShader: 'attribute float aSize; attribute vec3 aColor; varying vec3 vC; uniform float uScale; void main(){ vC = aColor; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix*mv; }',
-      fragmentShader: 'varying vec3 vC; void main(){ vec2 p = gl_PointCoord - 0.5; float d = length(p); float core = smoothstep(0.5, 0.0, d); float cross = max(0.0, 1.0 - abs(p.x)*9.0) * max(0.0, 1.0 - abs(p.y)*2.2) + max(0.0, 1.0 - abs(p.y)*9.0) * max(0.0, 1.0 - abs(p.x)*2.2); gl_FragColor = vec4(vC * (core*core + cross*0.6), 1.0); }',
+      fragmentShader: 'varying vec3 vC; void main(){ vec2 p = gl_PointCoord - 0.5; float d = length(p); float core = 1.0 - smoothstep(0.0, 0.5, d); float cross = max(0.0, 1.0 - abs(p.x)*9.0) * max(0.0, 1.0 - abs(p.y)*2.2) + max(0.0, 1.0 - abs(p.y)*9.0) * max(0.0, 1.0 - abs(p.x)*2.2); gl_FragColor = vec4(vC * (core*core + cross*0.6), 1.0); }',
     }),
   );
   points.frustumCulled = false;
@@ -773,6 +776,7 @@ export function createStage(scene, opts = {}) {
       const lift = clamp((h.position.y - b.dancer.hipY) * 3, 0, 0.6);
       b.m.scale.setScalar(1 - lift * 0.5);
       b.m.material.opacity = 0.85 - lift;
+      b.m.visible = b.dancer.root.visible;
     }
   };
 

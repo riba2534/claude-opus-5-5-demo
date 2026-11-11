@@ -128,6 +128,7 @@ export function createSequencer(audio) {
       while (bassBase < 33) bassBase += 12;
       while (bassBase > 45) bassBase -= 12;
       padBase = song.key < 56 ? song.key + 12 : song.key;
+      audio.newSession();
       audio.setKey(song.key < 56 ? song.key + 12 : song.key);
       audio.setDelayTime(sps * 3);
       tick();
@@ -143,6 +144,8 @@ export function createSequencer(audio) {
     stop() {
       if (timer) clearInterval(timer);
       timer = null;
+      // 已经排进去的长音（铺底、蓄力噪声）也要一起掐掉，否则会叠在下一首的开头
+      if (song) audio.endSession();
       song = null;
     },
     get song() {
@@ -194,7 +197,8 @@ export function createClock(audio) {
         // 小误差平滑跟随，大误差（切后台回来）直接对齐
         if (Math.abs(err) > 0.06) est = target;
         else est += err * 0.12;
-        c.time = est;
+        // 时间只往前走：音频卡顿让估计值回退时，原地等它追上来
+        if (est > c.time) c.time = est;
       }
     } else if (!c.paused) {
       c.time += dt * c.scale;
@@ -203,7 +207,10 @@ export function createClock(audio) {
   c.beat = () => ((c.time - c.offset) * c.bpm) / 60;
   // 把输入事件的时间戳换算成节拍：c.time 对应上一帧，事件通常发生在两帧之间
   c.eventBeat = (timeStamp) => {
-    const ts = (timeStamp || performance.now()) / 1000;
+    let ms = timeStamp || performance.now();
+    // 个别旧浏览器的 event.timeStamp 是从 1970 年起算的，和 performance.now() 不在一条时间轴上
+    if (ms > performance.now() + 60000) ms = performance.now();
+    const ts = ms / 1000;
     const delta = c.paused ? 0 : clamp(ts - lastPerf, -0.25, 0.25);
     return ((c.time + delta * (c.mode === 'audio' ? 1 : c.scale) - c.offset) * c.bpm) / 60;
   };

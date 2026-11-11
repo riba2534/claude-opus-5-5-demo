@@ -1,0 +1,39 @@
+{
+ "neck": [
+  0.5414,
+  0.9593
+ ],
+ "chin": [
+  0.549,
+  0.9089
+ ],
+ "size": [
+  576,
+  640
+ ],
+ "patches": {
+  "eye-l-closed": [
+   130,
+   301
+  ],
+  "eye-l-happy": [
+   130,
+   301
+  ],
+  "eye-r-closed": [
+   361,
+   319
+  ],
+  "eye-r-happy": [
+   361,
+   319
+  ]
+ },
+ "colors": {
+  "skin": "#fadfd7",
+  "skinShade": "#c27866",
+  "hair": "#473935",
+  "hairLight": "#4d3933",
+  "hairDark": "#574c4b"
+ }
+}

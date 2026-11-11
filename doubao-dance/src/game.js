@@ -131,7 +131,9 @@ export function createGame({ clock, events }) {
     p.counts[kind]++;
     p.accSum += ACC[kind];
     p.accN++;
+    // 连 P 断在 Great 上只掉一半：一次小失误不至于把十个回合攒起来的倍率全部清零
     if (kind === 'perfect') p.chain++;
+    else if (kind === 'great') p.chain = Math.floor(p.chain / 2);
     else p.chain = 0;
     p.maxChain = Math.max(p.maxChain, p.chain);
     const breaks = kind === 'miss' || (!isSeq && kind === 'bad');
@@ -142,8 +144,10 @@ export function createGame({ clock, events }) {
       const chainMult = kind === 'perfect' && p.chain >= 2 ? 1 + 0.1 * Math.min(p.chain - 1, 10) : 1;
       pts = SEQ_BASE[kind] * (1 + 0.12 * ((info.level || 1) - 1)) * chainMult * (info.finish ? 3 : 1);
     } else {
-      pts = NOTE_BASE[kind] * (1 + Math.min(p.combo, 100) / 100) * (info.final ? 3 : 1);
+      // 连击倍率 40 连封顶 ×1.5：断一次连击的代价有限，追得回来
+      pts = NOTE_BASE[kind] * (1 + Math.min(p.combo, 40) / 80) * (info.final ? 3 : 1);
     }
+    if (info.scale != null) pts *= info.scale;
     if (p.fever) pts *= 2;
     pts = Math.round(pts);
     p.score += pts;
@@ -185,12 +189,16 @@ export function createGame({ clock, events }) {
   function tryNote(lane, evBeat) {
     const notes = g.chart.notes;
     const win = s2b(NOTE_WIN.bad);
+    // 取这条轨道上最早的未判音符：同轨连打时按晚了也是先消掉前一个，不会跳过它去吃后一个
     let best = null;
     for (let i = g.noteHead; i < notes.length; i++) {
       const n = notes[i];
       if (n.beat > evBeat + win) break;
       if (n.judged || n.lane !== lane) continue;
-      if (Math.abs(n.beat - evBeat) <= win && (!best || Math.abs(n.beat - evBeat) < Math.abs(best.beat - evBeat))) best = n;
+      if (Math.abs(n.beat - evBeat) <= win) {
+        best = n;
+        break;
+      }
     }
     if (!best) return false;
     const dt = b2s(evBeat - best.beat);
@@ -257,31 +265,45 @@ export function createGame({ clock, events }) {
     if (!r || r.judged) return;
     const dtBeats = evBeat - r.hitBeat;
     const done = r.progress === r.arrows.length;
-    // 序列还没敲完、离重拍也还远：当作误触，不罚
-    if (!done && dtBeats < -1.25) {
+    // 离重拍还有一拍多：不管序列敲没敲完都当作误触，不罚。
+    // 终结技跨两小节，敲完后很容易在第一小节的第 4 拍顺手按下去。
+    if (dtBeats < -1.25) {
       events.emit('early', {});
       return;
     }
     const dt = b2s(dtBeats);
-    const kind = done ? judgeByDt(dt, SEQ_WIN) : 'miss';
-    finishRound(r, kind, dt);
+    let kind = done ? judgeByDt(dt, SEQ_WIN) : 'miss';
+    let scale = null;
+    // 序列敲了一半以上、空格也踩在拍子附近：算 Bad，按敲完的比例给分，不是一个键没敲完就全盘归零
+    if (!done && r.progress * 2 >= r.arrows.length && Math.abs(dt) <= SEQ_WIN.bad) {
+      kind = 'bad';
+      scale = r.progress / r.arrows.length;
+    }
+    finishRound(r, kind, dt, scale);
   };
 
-  function finishRound(r, kind, dt) {
+  function finishRound(r, kind, dt, scale = null) {
     r.judged = kind;
     r.judgedAt = g.beat;
     r.open = false;
-    applyJudge(g.me, kind, 'seq', { level: r.level, finish: r.finish, dt });
+    applyJudge(g.me, kind, 'seq', { level: r.level, finish: r.finish, dt, scale });
     g.round = null;
     roundIdx = r.id + 1;
   }
 
   // ---------------------------------------------------------------- AI 对手
-  function rivalKind(p, level, isNote) {
-    if (rnd() < p.slip) return 'miss';
+  function rivalKind(p, level, isNote, lenSec = 0) {
+    // 节拍玩法靠"不断连"拿分，对手在音符上要更容易失手，不然同一个对手在节拍玩法里比舞步玩法强出一档
+    if (rnd() < (isNote ? p.slip * 2.5 : p.slip)) return 'miss';
+    if (!isNote && lenSec) {
+      // 对手也有手速上限：一小节里要敲的键太多，同样会敲不完
+      const need = level / Math.max(0.4, lenSec - 0.35);
+      const can = 3.2 + 4.2 * p.skill;
+      if (need > can && rnd() < clamp((need - can) * 0.35, 0, 0.9)) return 'miss';
+    }
     // 两个均匀随机数相加，得到中间高两头低的分布
     const noise = (rnd() + rnd() - 1) * 0.3;
-    const x = p.skill - (isNote ? 0 : Math.max(0, level - 4) * 0.018) + noise;
+    const x = p.skill - (isNote ? 0.1 : Math.max(0, level - 4) * 0.018) + noise;
     if (x > 0.8) return 'perfect';
     if (x > 0.6) return 'great';
     if (x > 0.42) return 'cool';
@@ -293,7 +315,7 @@ export function createGame({ clock, events }) {
     const { rounds, notes, frees } = g.chart;
     while (rivalRound < rounds.length && beat >= rounds[rivalRound].hitBeat + 0.05) {
       const r = rounds[rivalRound++];
-      for (const p of g.players) if (!p.isMe) applyJudge(p, rivalKind(p, r.level, false), 'seq', { level: r.level, finish: r.finish });
+      for (const p of g.players) if (!p.isMe) applyJudge(p, rivalKind(p, r.level, false, b2s(r.lenBeats)), 'seq', { level: r.level, finish: r.finish });
     }
     while (rivalNote < notes.length && beat >= notes[rivalNote].beat) {
       const n = notes[rivalNote++];
@@ -353,8 +375,9 @@ export function createGame({ clock, events }) {
     }
 
     // 整拍 / 整小节事件
+    // 只在节拍向前跨过整拍时触发：时钟偶尔会回退一点，不能把同一拍的事件再发一遍
     const bi = Math.floor(beat);
-    if (bi !== g.lastBeatInt) {
+    if (bi > g.lastBeatInt) {
       // 跳帧时逐拍补发，保证舞台和灵感爆发的时机不丢
       const from = g.lastBeatInt < -50 ? bi : g.lastBeatInt + 1;
       for (let n = Math.max(from, bi - 4); n <= bi; n++) {
@@ -416,8 +439,11 @@ export function createGame({ clock, events }) {
 
   function onBar(n) {
     events.emit('bar', { bar: n / 4 });
+    // 只在有谱面的段落里触发：落在自由发挥或前奏上等于白白浪费掉一半
+    const t = g.seg ? g.seg.type : 'rest';
+    const scoring = t === 'seq' || t === 'notes' || t === 'finish' || t === 'notesEnd';
     for (const p of g.players) {
-      if (!p.fever && p.gauge >= 1 && n < g.chart.finalBeat - 4) {
+      if (!p.fever && p.gauge >= 1 && scoring && n < g.chart.finalBeat - 4) {
         p.fever = true;
         p.feverEnd = n + FEVER_BEATS;
         p.feverCount++;

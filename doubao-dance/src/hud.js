@@ -94,6 +94,23 @@ export function createHud(canvas) {
   let roundIn = 0;
   let time = 0;
 
+  // 刘海屏的安全区：画布上的按键要避开，CSS 的 env() 只能借一个隐藏元素读出来
+  let probe = null;
+  function safeInsets() {
+    try {
+      if (!probe) {
+        probe = document.createElement('div');
+        probe.style.cssText =
+          'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+        document.body.appendChild(probe);
+      }
+      const cs = getComputedStyle(probe);
+      return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+    } catch (e) {
+      return { t: 0, r: 0, b: 0, l: 0 };
+    }
+  }
+
   hud.resize = () => {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = Math.max(1, canvas.clientWidth);
@@ -104,24 +121,50 @@ export function createHud(canvas) {
     L.W = W;
     L.H = H;
     const small = Math.min(W, H);
+    const inset = safeInsets();
+    const bottom = H - inset.b;
+    L.tilesCx = W / 2;
+    L.tilesW = W - 28;
     if (hud.touch) {
       const pr = clamp(small * 0.105, 32, 50);
       const gap = pr * 1.55;
-      L.dpad = { cx: gap + pr + 14, cy: H - gap - pr - 18, r: pr, gap };
-      L.ring = { cx: W - pr * 1.75 - 16, cy: H - gap - pr - 18, r: pr * 1.4 };
-      L.tilesY = Math.max(H * 0.36, L.dpad.cy - gap - pr - 58);
-      L.tileMax = 50;
+      L.dpad = { cx: inset.l + gap + pr + 14, cy: bottom - gap - pr - 18, r: pr, gap };
+      L.ring = { cx: W - inset.r - pr * 1.75 - 16, cy: bottom - gap - pr - 18, r: pr * 1.4 };
+      if (W > H * 1.25) {
+        // 横屏：屏幕矮，序列放到方向键和踩拍圆环之间，不往上挤
+        const left = L.dpad.cx + gap + pr + 14;
+        const right = L.ring.cx - L.ring.r * 1.35 - 14;
+        L.tilesCx = (left + right) / 2;
+        L.tilesW = Math.max(160, right - left);
+        L.tilesY = bottom - clamp(H * 0.4, 128, 190);
+        L.tileMax = 46;
+      } else {
+        L.tilesY = Math.max(H * 0.36, L.dpad.cy - gap - pr - 58);
+        L.tileMax = 50;
+      }
     } else {
       L.dpad = null;
       L.ring = { cx: W / 2, cy: H - 88, r: 44 };
-      L.tilesY = H - 208;
+      // 序列放高一些，下面的踩拍环和四个拍点才不会压到方块
+      L.tilesY = H - 246;
       L.tileMax = 60;
     }
-    const hwW = Math.min(W - 16, hud.touch ? 560 : 430);
-    const hitY = H - (hud.touch ? Math.max(92, H * 0.14) : 108);
-    L.hw = { cx: W / 2, w: hwW, laneW: hwW / 4, hitY, topY: hitY - Math.min(H * 0.4, 300) };
-    L.judgeY = L.tilesY - clamp(H * 0.14, 74, 104);
-    L.noteJudgeY = hitY - hwW / 4 - 6;
+    // narrow：手机竖屏或竖屏平板；short：手机横屏这种很矮的屏幕
+    L.narrow = W <= 760 || W / H < 0.85;
+    L.short = H < 480;
+    const hitY = bottom - (hud.touch ? Math.max(92, H * 0.14) : 108);
+    // 矮屏上轨道要占更大比例的高度，否则音符一出现就到线了
+    const topY = Math.max(inset.t + 84, hitY - Math.min(H * (L.short ? 0.58 : 0.36), 300));
+    // 轨道宽度跟着长度走：又短又宽的轨道上音符会大到互相叠住
+    const hwW = Math.min(W - 16, hud.touch ? 560 : 430, (hitY - topY) * 1.7);
+    L.hw = { cx: W / 2, w: hwW, laneW: hwW / 4, hitY, topY };
+    // 段落横幅放在顶部信息栏的正下方，不挡主角的脸
+    L.bannerY = inset.t + (L.narrow ? 178 : L.short ? 100 : 108);
+    L.bannerSize = clamp(W * 0.036, 26, 44) * (L.short ? 0.9 : 1);
+    // 判定字不能顶到顶部信息栏下面去
+    L.judgeY = Math.max(L.tilesY - (L.short ? 68 : clamp(H * 0.14, 74, 104)), inset.t + 118);
+    // 音符的判定字放在接收框下面：放在上面会盖住马上要到线的音符
+    L.noteJudgeY = Math.min(H - 18, hitY + hwW / 8 + 24);
   };
 
   // ------------------------------------------------------------ 对外的反馈接口
@@ -141,9 +184,10 @@ export function createHud(canvas) {
   hud.banner = (text, o = {}) => {
     // 倒数这类连续横幅：新的一条直接顶掉上一条
     if (o.replace) banners.length = 0;
-    banners.push({ text, t: 0, dur: o.dur || 1.4, color: o.color || '#ffffff', color2: o.color2 || '#ffd36b', size: o.size || 1, y: o.y == null ? 0.24 : o.y, sub: o.sub || '' });
+    banners.push({ text, t: 0, dur: o.dur || 1.4, color: o.color || '#ffffff', color2: o.color2 || '#ffd36b', size: o.size || 1, sub: o.sub || '' });
     if (banners.length > 3) banners.shift();
   };
+  hud.bannerActive = () => banners.length > 0;
   hud.clear = () => {
     judge = null;
     banners.length = 0;
@@ -159,13 +203,13 @@ export function createHud(canvas) {
     const L = hud.layout;
     const n = r.arrows.length;
     const gapK = 0.14;
-    let size = (W - 28) / (n + (n - 1) * gapK);
+    let size = L.tilesW / (n + (n - 1) * gapK);
     size = clamp(size, 22, L.tileMax);
     const gap = size * gapK;
     const total = n * size + (n - 1) * gap;
     const wrongAge = (beat - r.wrongAt) * g.secPerBeat;
     const shake = wrongAge >= 0 && wrongAge < 0.35 ? Math.sin(wrongAge * 60) * 7 * (1 - wrongAge / 0.35) : 0;
-    const x0 = W / 2 - total / 2 + shake;
+    const x0 = L.tilesCx - total / 2 + shake;
     const y = L.tilesY + (1 - ease.out(clamp(roundIn, 0, 1))) * 16;
     const done = r.progress === n && !r.judged;
     x.save();
@@ -220,25 +264,38 @@ export function createHud(canvas) {
       }
     }
     // 等级 / 终结技标签
-    x.textAlign = 'left';
-    x.textBaseline = 'alphabetic';
+    // 亮色地板上纯填充的小字看不清，统一加深色描边
+    const label = (txt, lx, ly, font, fill, align) => {
+      x.font = font;
+      x.textAlign = align;
+      x.textBaseline = 'alphabetic';
+      x.lineJoin = 'round';
+      x.lineWidth = 4;
+      x.strokeStyle = 'rgba(20,10,50,0.9)';
+      x.strokeText(txt, lx, ly);
+      x.fillStyle = fill;
+      x.fillText(txt, lx, ly);
+      return x.measureText(txt).width;
+    };
+    let leftW;
     if (r.finish) {
-      x.font = `900 italic 22px ${FONT}`;
       const gr = x.createLinearGradient(x0, 0, x0 + 200, 0);
       gr.addColorStop(0, '#fff3a0');
       gr.addColorStop(1, '#ff9a5a');
-      x.fillStyle = gr;
-      x.fillText('FINISH MOVE  ×3', x0 - 8, y - 22);
+      leftW = label(L.narrow ? 'FINISH ×3' : 'FINISH MOVE  ×3', x0 - 8, y - 22, `900 italic ${L.narrow ? 18 : 22}px ${FONT}`, gr, 'left');
     } else {
-      x.font = `900 italic 18px ${FONT}`;
-      x.fillStyle = 'rgba(210,220,255,0.95)';
-      x.fillText(`LV ${r.level}`, x0 - 8, y - 20);
+      leftW = label(`LV ${r.level}`, x0 - 8, y - 20, `900 italic 18px ${FONT}`, 'rgba(225,232,255,1)', 'left');
     }
     if (done) {
-      x.textAlign = 'right';
-      x.font = `900 16px ${FONT_CN}`;
-      x.fillStyle = `rgba(255,236,150,${0.7 + 0.3 * Math.sin(time * 12)})`;
-      x.fillText(hud.touch ? '等第 4 拍，点右侧圆环！' : '等第 4 拍，按空格！', x0 + total + 8, y - 20);
+      const when = r.finish ? '最后一拍' : '第 4 拍';
+      const txt = hud.touch ? `${when}点圆环！` : `等${when}，按空格！`;
+      const font = `900 16px ${FONT_CN}`;
+      x.font = font;
+      const w = x.measureText(txt).width;
+      const fill = `rgba(255,236,150,${0.8 + 0.2 * Math.sin(time * 12)})`;
+      // 和左边的标签挤不下时，提示语换到上面一行居中
+      if (leftW + w + 24 <= total + 16) label(txt, x0 + total + 8, y - 20, font, fill, 'right');
+      else label(txt, x0 + total / 2, y - 46, font, fill, 'center');
     }
     x.restore();
   }
@@ -287,7 +344,7 @@ export function createHud(canvas) {
     if (r) {
       const tt = r.hitBeat - beat;
       if (tt < 3.2 && tt > -0.4) {
-        const rad = r0 * (1 + 0.6 * clamp(tt, -0.4, 3));
+        const rad = r0 * (1 + 0.34 * clamp(tt, -0.4, 3));
         const near = Math.abs(tt) * g.secPerBeat < 0.06;
         x.beginPath();
         x.arc(cx, cy, Math.max(2, rad), 0, TAU);
@@ -462,13 +519,17 @@ export function createHud(canvas) {
     x.fillStyle = '#ffffff';
     x.font = `900 ${Math.round(r0 * 0.5)}px ${FONT_CN}`;
     x.fillText('拍', cx, cy + 1);
+    x.lineJoin = 'round';
+    x.lineWidth = 4;
+    x.strokeStyle = 'rgba(20,10,50,0.9)';
+    x.fillStyle = 'rgba(255,240,170,1)';
     if (!hud.touch) {
       x.font = `800 17px ${FONT_CN}`;
-      x.fillStyle = 'rgba(255,240,170,0.96)';
+      x.strokeText('自由发挥：踩着节拍按任意方向键摆造型', W / 2, cy - r0 - 34);
       x.fillText('自由发挥：踩着节拍按任意方向键摆造型', W / 2, cy - r0 - 34);
     } else {
       x.font = `800 15px ${FONT_CN}`;
-      x.fillStyle = 'rgba(255,240,170,0.96)';
+      x.strokeText('自由发挥：踩着节拍点方向键', W / 2, L.tilesY + 20);
       x.fillText('自由发挥：踩着节拍点方向键', W / 2, L.tilesY + 20);
     }
     x.restore();
@@ -503,7 +564,7 @@ export function createHud(canvas) {
     const base = clamp(W * 0.065, 32, 62) * (judge.small ? 0.6 : 1) * (judge.finish ? 1.2 : 1);
     const s = base * (0.6 + 0.4 * ease.outBack(clamp(t / 0.13, 0, 1)));
     const alpha = clamp((life - t) / 0.22, 0, 1);
-    const cy = (judge.small ? hud.layout.noteJudgeY : hud.layout.judgeY) - t * 18;
+    const cy = judge.small ? hud.layout.noteJudgeY : hud.layout.judgeY - t * 18;
     x.save();
     x.globalAlpha = alpha;
     if (judge.kind === 'perfect') {
@@ -515,7 +576,7 @@ export function createHud(canvas) {
     if (judge.kind === 'perfect' && judge.chain >= 2 && !judge.small) {
       gradText(`×${judge.chain}`, W / 2 + x.measureText(st.text).width / 2 + s * 0.45, cy - s * 0.3, s * 0.5, '#ffffff', '#ffd36b');
     }
-    if (judge.pts > 0 && !judge.small) {
+    if (judge.pts > 0 && !judge.small && !hud.layout.short) {
       x.font = `900 ${Math.round(base * 0.34)}px ${FONT}`;
       x.fillStyle = 'rgba(255,255,255,0.95)';
       x.strokeStyle = 'rgba(24,12,58,0.85)';
@@ -532,8 +593,14 @@ export function createHud(canvas) {
     comboPop = Math.max(0, comboPop - dt * 5);
     if (c < 3) return;
     const big = clamp(W * 0.05, 30, 58) * (1 + comboPop * 0.22);
-    const cx = hud.touch ? W - 70 : Math.min(W - 110, W / 2 + Math.max(hud.layout.hw.w / 2 + 110, W * 0.3));
-    const cy = hud.touch ? H * 0.4 : H * 0.52;
+    const L = hud.layout;
+    let cx = Math.min(W - 110, W / 2 + Math.max(L.hw.w / 2 + 110, W * 0.3));
+    let cy = H * 0.52;
+    if (hud.touch) {
+      // 触屏：放在判定字的上一行靠右，两者不会撞在同一高度
+      cx = W - 66;
+      cy = L.short ? 132 : L.judgeY - 92;
+    }
     x.save();
     x.globalAlpha = 0.96;
     gradText(String(c), cx, cy, big, '#ffffff', '#a8c8ff');
@@ -551,20 +618,26 @@ export function createHud(canvas) {
       }
       const inK = ease.outBack(clamp(b.t / 0.22, 0, 1));
       const out = clamp((b.dur - b.t) / 0.3, 0, 1);
-      const size = clamp(W * 0.085, 36, 92) * b.size * (0.5 + 0.5 * inK);
+      const L = hud.layout;
+      const size = L.bannerSize * b.size * (0.5 + 0.5 * inK);
+      const by = L.bannerY;
       x.save();
       x.globalAlpha = out;
       x.shadowColor = b.color2;
-      x.shadowBlur = 24;
-      gradText(b.text, W / 2, H * b.y, size, b.color, b.color2, false);
+      x.shadowBlur = 18;
+      gradText(b.text, W / 2, by, size, b.color, b.color2, false);
       x.shadowBlur = 0;
-      if (b.sub) {
-        x.font = `800 ${Math.round(clamp(W * 0.02, 13, 20))}px ${FONT_CN}`;
-        x.fillStyle = 'rgba(255,255,255,0.95)';
-        x.strokeStyle = 'rgba(24,12,58,0.85)';
+      // 矮屏上放不下副标题
+      if (b.sub && !L.short) {
+        x.font = `800 ${Math.round(clamp(W * 0.016, 12, 17))}px ${FONT_CN}`;
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.lineJoin = 'round';
+        x.fillStyle = 'rgba(255,255,255,0.96)';
+        x.strokeStyle = 'rgba(24,12,58,0.9)';
         x.lineWidth = 4;
-        x.strokeText(b.sub, W / 2, H * b.y + size * 0.82);
-        x.fillText(b.sub, W / 2, H * b.y + size * 0.82);
+        x.strokeText(b.sub, W / 2, by + L.bannerSize * b.size * 0.86);
+        x.fillText(b.sub, W / 2, by + L.bannerSize * b.size * 0.86);
       }
       x.restore();
     }
@@ -617,8 +690,9 @@ export function createHud(canvas) {
         roundIn = 0;
       }
       roundIn += dt * 6;
-      hud.seqA = damp(hud.seqA, seqOn ? 1 : 0, seqOn ? 14 : 7, dt);
-      hud.noteA = damp(hud.noteA, notesOn && !seqOn ? 1 : 0, 9, dt);
+      hud.seqA = damp(hud.seqA, seqOn ? 1 : 0, seqOn ? 14 : 12, dt);
+      // 序列淡出得差不多了，轨道才开始出现：两者占的是同一块位置
+      hud.noteA = damp(hud.noteA, notesOn && !seqOn && hud.seqA < 0.25 ? 1 : 0, 9, dt);
       hud.freeA = damp(hud.freeA, freeOn ? 1 : 0, 9, dt);
       if (hud.noteA > 0.01) drawHighway(g, beat, hud.noteA);
       if (hud.freeA > 0.01) drawFree(g, beat, hud.freeA);

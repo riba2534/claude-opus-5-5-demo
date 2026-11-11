@@ -31,6 +31,12 @@ export function createAudio(opts = {}) {
     }
   }
   if (!ctx) return silentAudio();
+  // iOS 上默认的音频会话受静音拨片控制，拨到静音时游戏会完全没声音
+  try {
+    if (!opts.context && navigator.audioSession) navigator.audioSession.type = 'playback';
+  } catch (e) {
+    /* 不支持就算了 */
+  }
 
   // ---------------------------------------------------------------- 总线
   const master = ctx.createGain();
@@ -59,10 +65,14 @@ export function createAudio(opts = {}) {
   const fftBins = new Uint8Array(analyser.frequencyBinCount);
 
   // 侧链：底鼓落下时把铺底和贝斯压一下，产生电子舞曲的"呼吸感"
-  const pump = ctx.createGain();
-  pump.connect(music);
-  const drums = ctx.createGain();
-  drums.connect(music);
+  // 每次开始播放一首曲子都换一套新的节点（见下面的 newSession），
+  // 停止时把旧的一套整体掐掉，已经排进去的长音不会拖到下一首里。
+  let pump = null;
+  let drums = null;
+  let inst = null;
+  let revSend = null;
+  let delaySend = null;
+  let sessionOut = null;
 
   // 混响：指数衰减的噪声脉冲响应
   const reverb = ctx.createConvolver();
@@ -71,8 +81,6 @@ export function createAudio(opts = {}) {
   revRet.gain.value = 0.5;
   reverb.connect(revRet);
   revRet.connect(master);
-  const revSend = ctx.createGain();
-  revSend.connect(reverb);
   const sfxRev = ctx.createGain();
   sfxRev.gain.value = 0.35;
   sfxBus.connect(sfxRev);
@@ -93,8 +101,48 @@ export function createAudio(opts = {}) {
   dFb.connect(delay);
   dLp.connect(dRet);
   dRet.connect(music);
-  const delaySend = ctx.createGain();
-  delaySend.connect(delay);
+
+  function endSession() {
+    if (!sessionOut) return;
+    const old = [sessionOut, pump, drums, inst, revSend, delaySend];
+    const drop = () => {
+      for (const n of old) {
+        try {
+          n.disconnect();
+        } catch (e) {
+          /* 已经断开 */
+        }
+      }
+    };
+    if (ctx.state === 'running') {
+      const t = ctx.currentTime;
+      for (const n of [sessionOut, revSend, delaySend]) {
+        n.gain.cancelScheduledValues(t);
+        n.gain.setValueAtTime(n.gain.value, t);
+        n.gain.linearRampToValueAtTime(0, t + 0.04);
+      }
+      setTimeout(drop, 160);
+    } else {
+      drop();
+    }
+    sessionOut = null;
+  }
+  function newSession() {
+    endSession();
+    sessionOut = ctx.createGain();
+    sessionOut.connect(music);
+    pump = ctx.createGain();
+    pump.connect(sessionOut);
+    drums = ctx.createGain();
+    drums.connect(sessionOut);
+    inst = ctx.createGain();
+    inst.connect(sessionOut);
+    revSend = ctx.createGain();
+    revSend.connect(reverb);
+    delaySend = ctx.createGain();
+    delaySend.connect(delay);
+  }
+  newSession();
 
   const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   {
@@ -217,7 +265,7 @@ export function createAudio(opts = {}) {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.22 * v, t + dur);
     g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.03);
-    g.connect(music);
+    g.connect(inst);
     g.connect(revSend);
     const f = filter('bandpass', 400, 1.6, g);
     f.frequency.setValueAtTime(350, t);
@@ -263,7 +311,7 @@ export function createAudio(opts = {}) {
   }
   function lead(t, midi, dur, v = 1, kind = 'square') {
     const f = mtof(midi);
-    const lp = filter('lowpass', 3600, 1.5, music);
+    const lp = filter('lowpass', 3600, 1.5, inst);
     lp.frequency.setValueAtTime(5200, t);
     lp.frequency.exponentialRampToValueAtTime(1700, t + Math.min(0.3, dur));
     lp.connect(delaySend);
@@ -287,7 +335,7 @@ export function createAudio(opts = {}) {
   }
   function pluck(t, midi, dur, v = 1) {
     const f = mtof(midi);
-    const lp = filter('lowpass', 2600, 2.5, music);
+    const lp = filter('lowpass', 2600, 2.5, inst);
     lp.frequency.setValueAtTime(4800, t);
     lp.frequency.exponentialRampToValueAtTime(500, t + 0.16);
     lp.connect(delaySend);
@@ -296,7 +344,7 @@ export function createAudio(opts = {}) {
     osc('triangle', f * 2, t, dur + 0.2, g);
   }
   // 简单 FM 钟声：给高光旋律和判定音效用
-  function bell(t, midi, v = 1, dest = music) {
+  function bell(t, midi, v = 1, dest = inst) {
     const f = mtof(midi);
     const g = vca(t, 0.2 * v, 0.002, 0.5, 0.01, 0, 0.3, dest);
     g.connect(revSend);
@@ -457,6 +505,8 @@ export function createAudio(opts = {}) {
     pluck,
     bell,
     now: () => ctx.currentTime,
+    newSession,
+    endSession,
     resume: async () => {
       try {
         if (ctx.state !== 'running') await ctx.resume();
@@ -474,13 +524,13 @@ export function createAudio(opts = {}) {
     },
     // 玩家此刻"听到"的那个采样在 AudioContext 时间轴上的位置
     heardTime() {
+      let h = ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
       if (ctx.getOutputTimestamp) {
         const ts = ctx.getOutputTimestamp();
-        if (ts && ts.performanceTime > 0 && ts.contextTime > 0) {
-          return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
-        }
+        if (ts && ts.performanceTime > 0 && ts.contextTime > 0) h = ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
       }
-      return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+      // 刚从挂起恢复时这个时间戳可能还是旧的，按它外推会超前一大截；已经播出去的不可能比已经调度的还多
+      return Math.min(h, ctx.currentTime);
     },
     setVolumes({ music: m, sfx: s }) {
       const t = ctx.currentTime;

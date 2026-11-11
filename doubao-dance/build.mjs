@@ -10,6 +10,8 @@ const res = await esbuild.build({
   target: ['es2020'],
   write: false,
   legalComments: 'none',
+  // 豆包的头部贴图以 data URL 内联进脚本，产物仍是单个 HTML
+  loader: { '.webp': 'dataurl' },
   logLevel: 'warning',
 });
 const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');

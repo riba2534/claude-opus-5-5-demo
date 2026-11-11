@@ -118,6 +118,7 @@ input[type="range"] { width: 100%; accent-color: #9b7bff; height: 28px; }
 #top { position: absolute; left: 0; right: 0; top: 0; z-index: 20; display: grid; grid-template-columns: 1fr minmax(180px, 420px) 1fr; align-items: start; gap: 14px; padding: calc(12px + var(--sat)) calc(14px + var(--sar)) 0 calc(14px + var(--sal)); pointer-events: none; }
 .me-card { display: flex; align-items: center; gap: 10px; justify-self: start; padding: 8px 16px 8px 8px; border-radius: 28px; background: var(--panel); border: 1px solid var(--line); }
 .avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 19px; background: var(--grad); }
+.avatar.img { background: #cae4fe center / cover no-repeat; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85); }
 .score { font-family: var(--num); font-size: clamp(20px, 2.6vw, 30px); line-height: 1; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
 .me-info .np { margin-top: 4px; font-size: 12px; white-space: nowrap; color: var(--muted); letter-spacing: 0.06em; }
 .mid { display: flex; flex-direction: column; gap: 7px; align-items: center; }
@@ -128,7 +129,7 @@ input[type="range"] { width: 100%; accent-color: #9b7bff; height: 28px; }
 .tag.ghost { background: rgba(18, 12, 48, 0.7); color: #e6e2ff; border: 1px solid var(--line); }
 .gauge { position: relative; width: min(300px, 100%); height: 20px; border-radius: 10px; background: rgba(18, 12, 48, 0.75); border: 1px solid var(--line); overflow: hidden; }
 .gauge i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #6fa8ff, #9b7bff, #ff7eb6, #ffd36b); border-radius: 10px; }
-.gauge b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 800; letter-spacing: 0.2em; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.gauge b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 800; letter-spacing: 0.2em; white-space: nowrap; text-shadow: 0 0 3px #1a0f3c, 0 0 3px #1a0f3c, 0 1px 2px #1a0f3c; }
 .gauge.full { box-shadow: 0 0 16px rgba(255, 211, 107, 0.9); border-color: var(--gold); }
 .gauge.fever { box-shadow: 0 0 22px rgba(255, 126, 182, 0.95); border-color: #fff; animation: feverPulse 0.5s ease-in-out infinite alternate; }
 @keyframes feverPulse { from { filter: brightness(1); } to { filter: brightness(1.45); } }
@@ -136,10 +137,10 @@ input[type="range"] { width: 100%; accent-color: #9b7bff; height: 28px; }
 #rank { list-style: none; margin: 0; padding: 6px; width: 172px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); }
 #rank li { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 10px; font-size: 13px; }
 #rank li i { font: normal 12px var(--num); color: var(--muted); }
-#rank li b { font-weight: 800; }
+#rank li b { font-weight: 800; white-space: nowrap; overflow: hidden; }
 #rank li span { font: 12px var(--num); font-variant-numeric: tabular-nums; color: #e6e2ff; }
 #rank li.me { background: linear-gradient(90deg, rgba(111, 168, 255, 0.5), rgba(255, 126, 182, 0.5)); }
-#rank li.fv b::after { content: " ✦"; color: var(--gold); }
+#rank li.fv b::after { content: "✦"; margin-left: 2px; color: var(--gold); }
 .round { pointer-events: auto; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); font-size: 13px; cursor: pointer; }
 .round:hover { background: rgba(255, 255, 255, 0.18); }
 
@@ -176,8 +177,8 @@ input[type="range"] { width: 100%; accent-color: #9b7bff; height: 28px; }
 .res-say { margin: 14px 0 18px; padding: 10px 14px; border-radius: 4px 16px 16px 16px; background: rgba(255, 255, 255, 0.94); color: #2a1d5c; font-size: 14px; line-height: 1.6; }
 .res-say b { display: block; font-size: 11px; letter-spacing: 0.12em; color: #7a5cf0; }
 
-/* ---------- 窄屏 ---------- */
-@media (max-width: 760px) {
+/* ---------- 窄屏：手机竖屏，以及竖着拿的平板（规则和 main.js 的 portrait() 一致） ---------- */
+@media (max-width: 760px), (max-aspect-ratio: 85/100) {
   .panel { padding: 18px 16px 20px; border-radius: 22px; }
   .songs { grid-template-columns: 1fr; gap: 10px; }
   .song { padding: 12px 14px; }
@@ -199,7 +200,9 @@ input[type="range"] { width: 100%; accent-color: #9b7bff; height: 28px; }
   .tag { padding: 2px 10px; }
   .gauge { height: 18px; }
   #rank { width: 132px; padding: 4px; }
-  #rank li { padding: 2px 6px; font-size: 12px; }
+  #rank li { padding: 2px 6px; font-size: 12px; grid-template-columns: 14px 1fr auto; gap: 4px; }
+  #rank li span { font-size: 11px; }
+  .gauge b { letter-spacing: 0.06em; font-size: 10px; }
   .round { width: 36px; height: 36px; }
   .right { flex-direction: column-reverse; align-items: flex-end; gap: 6px; }
   #bubble { top: calc(120px + var(--sat)); }
@@ -211,6 +214,31 @@ input[type="range"] { width: 100%; accent-color: #9b7bff; height: 28px; }
   .res-board { grid-template-columns: 1fr; }
 }
 @media (max-height: 520px) {
+  /* 矮屏上气泡会盖住舞步序列 */
+  #bubble { display: none !important; }
+  /* 手机横屏：结算和选歌面板压缩到一屏以内，主按钮不用滚动就能点到 */
+  .panel.result { padding: 12px 16px 14px; }
+  .res-top { gap: 12px; }
+  .grade { width: 64px; height: 64px; font-size: 38px; border-radius: 18px; }
+  .grade.g-SS { font-size: 30px; }
+  .res-score { font-size: 28px; }
+  .res-counts { margin-top: 8px; gap: 6px; }
+  .res-counts div { padding: 4px 2px; }
+  .res-counts b { font-size: 16px; }
+  .res-stats { margin-top: 6px; font-size: 12px; }
+  .res-board, .res-say { display: none; }
+  .panel.result .btns { margin-top: 10px; }
+  .songs { gap: 8px; }
+  .song { padding: 8px 12px; }
+  .song .s-title { font-size: 17px; }
+  .song .s-en { display: none; }
+  .song .s-meta { margin-top: 4px; }
+  .row { margin-top: 8px; gap: 12px; }
+  .field label { margin-bottom: 4px; }
+  .seg button { height: 32px; }
+  .hint { display: none; }
+  .go-row { margin-top: 8px; }
+  .btn.big { height: 44px; font-size: 18px; }
   .logo { font-size: clamp(44px, 14vh, 84px); }
   .tagline { margin-bottom: 14px; }
   .fine { display: none; }
