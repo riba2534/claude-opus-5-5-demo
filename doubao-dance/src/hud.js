@@ -293,8 +293,9 @@ export function createHud(canvas) {
       x.font = font;
       const w = x.measureText(txt).width;
       const fill = `rgba(255,236,150,${0.8 + 0.2 * Math.sin(time * 12)})`;
-      // 和左边的标签挤不下时，提示语换到上面一行居中
+      // 序列很短、和左边的标签挤不下时：提示语放到方块右侧；右侧也放不下才换到上面一行
       if (leftW + w + 24 <= total + 16) label(txt, x0 + total + 8, y - 20, font, fill, 'right');
+      else if (x0 + total + 26 + w <= W - 8) label(txt, x0 + total + 26, y + size / 2 + 6, font, fill, 'left');
       else label(txt, x0 + total / 2, y - 46, font, fill, 'center');
     }
     x.restore();
