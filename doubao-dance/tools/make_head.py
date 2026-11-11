@@ -125,7 +125,9 @@ def head_crop(rgb, alpha):
     def to_head(px, py):  # 640 坐标 → 头部图的归一化坐标
         return [round(float((px * S - x0) / (x1 - x0)), 4), round(float((py * S - y0) / (y1 - y0)), 4)]
 
-    return img, {'neck': to_head(340, 446), 'chin': to_head(343, 424)}
+    # crop：头部图在原图标里的位置（归一化），运行时把官方图投影到 3D 头模上要用
+    crop = [round(float(v), 5) for v in (x0 / W, y0 / H, (x1 - x0) / W, (y1 - y0) / H)]
+    return img, {'neck': to_head(340, 446), 'chin': to_head(343, 424), 'crop': crop}
 
 
 # ---------------------------------------------------------------- 3. 表情补丁
