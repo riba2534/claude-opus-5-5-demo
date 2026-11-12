@@ -10,7 +10,7 @@ const WR = 0.29, RA = [0, WR, -0.47], FA = [0, WR, 0.5], BB = [0, 0.26, -0.02], 
 const HT = [0, 0.8, 0.3], HB = [0, 0.62, 0.345], TAUK = 0.245, GRIP = [0.24, 0.89, 0.25];
 const PEL = [0, 0.74, -0.2], SPINE = 0.34, UA = 0.19, FAL = 0.185, TH = 0.25, SHN = 0.26;
 export const M = {}; // 网格表
-let HEAD = null; // 官方头像生成的头模
+let HEAD = null, lookSide = 1; // 头模；回头时转向哪一侧
 export const GUNS = []; // 各武器枪口在枪局部坐标中的位置
 
 export const tube = (g, a, b, r, col, e = 0, gl = 0.6, fl = 3) => {
@@ -157,7 +157,10 @@ export function drawDoubao(p) {
   }
   put(M.hips, translate(ident(mA), px, py, pz), 1, 1, 1, fl);
   // 躯干：前倾 + 朝瞄准方向扭转
-  const lk = p.look || 0, cy_ = p.camY || 0, side = Math.abs(cy_) > 2.85 ? 2.85 : cy_;
+  // 镜头在正后方附近时固定朝一侧回头（开始回头时选定，中途不换边，避免头从一侧瞬间甩到另一侧）
+  const lk = p.look || 0, cy_ = p.camY || 0;
+  if (lk < 0.05) lookSide = cy_ < 0 && cy_ > -2.85 ? -1 : 1;
+  const side = Math.abs(cy_) < 2 ? cy_ : lookSide * min(Math.abs(cy_), 2.85);
   const leanF = 0.36 + sp * 0.2 - p.pitch * 0.5, tw = lerp(clamp(p.aimY, -2.2, 2.2) * 0.62, clamp(side, -1, 1) * 0.62, lk);
   ident(mT); translate(mT, px, py, pz); rotY(mT, tw * 0.35); rotX(mT, leanF); rotY(mT, tw * 0.65);
   put(M.torso, mT, 1, 1, 1, fl);

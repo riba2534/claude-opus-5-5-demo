@@ -20,7 +20,7 @@ export function makeAtlas(img) {
   const c = cv.getContext('2d');
   c.textAlign = 'center'; c.textBaseline = 'middle';
   const panel = ([x, y, w, h], bg, fg, text, size, sub, rad = 22) => {
-    c.fillStyle = bg; c.beginPath(); c.roundRect(x + 4, y + 4, w - 8, h - 8, rad); c.fill();
+    c.fillStyle = bg; c.beginPath(); c.roundRect ? c.roundRect(x + 4, y + 4, w - 8, h - 8, rad) : c.rect(x + 4, y + 4, w - 8, h - 8); c.fill(); // 老浏览器没有 roundRect
     c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 3; c.stroke();
     c.fillStyle = fg; c.font = `800 ${size}px ${FONT}`; c.fillText(text, x + w / 2, y + h / 2 - (sub ? size * 0.2 : 0) + size * 0.04, w - 24);
     if (sub) { c.font = `600 ${size * 0.26}px ${FONT}`; c.globalAlpha = 0.85; c.fillText(sub, x + w / 2, y + h / 2 + size * 0.52); c.globalAlpha = 1; }

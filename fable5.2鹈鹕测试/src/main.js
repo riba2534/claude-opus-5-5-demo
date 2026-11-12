@@ -23,7 +23,9 @@ async function boot() {
   // 官方豆包头像（构建时内联为 data URL）
   const img = new Image(); img.src = __DOUBAO__;
   const side = new Image(); side.src = __HEADTEX__;
-  await Promise.all([img.decode(), side.decode()]);
+  // decode() 在个别浏览器上会无故拒绝，退回等 onload
+  const ready = im => im.decode().catch(() => new Promise((ok, no) => { if (im.complete && im.naturalWidth) ok(); else { im.onload = ok; im.onerror = no; } }));
+  await Promise.all([ready(img), ready(side)]);
   if (qs.get('q')) G.opt.q = qs.get('q');
   G.debug = qs.has('debug') || qs.has('auto') || qs.has('start'); G.auto = qs.has('auto');
   if (qs.has('tod')) G.debugTod = +qs.get('tod');

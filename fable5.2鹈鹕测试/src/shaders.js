@@ -41,11 +41,11 @@ void mat(int L,vec2 u,out vec3 c,out float h,out float r,out float ao,out float 
     vec3 bc=k2<.62?vec3(.5):k2<.84?vec3(.56,.45,.41):vec3(.56,.51,.41);
     c=bc*(.86+.28*k)*(.9+.2*n2);c=mix(vec3(.35),c,b);h=mix(.3,.7+.12*k+n2*.12,b);r=.86;ao=mix(.6,1.,b);
   }else if(L==6){ // 瓦楞钢板：竖向波纹 + 锈迹
-    float w=abs(fract(u.x*12.)-.5)*2.;float rib=smoothstep(.2,.55,w);float rust=smoothstep(.55,.8,fb(u*vec2(1.,.35),10.)+.25*(1.-u.y)*0.);
+    float w=abs(fract(u.x*12.)-.5)*2.;float rib=smoothstep(.2,.55,w);float rust=smoothstep(.55,.8,fb(u*vec2(2.,1.),5.)+.25*(1.-u.y)*0.);
     c=mix(vec3(.5)*(.92+.16*n2),vec3(.3,.15,.07),rust*.75);h=.3+.5*rib+n2*.06;r=mix(.42,.9,rust);ao=.7+.3*rib;mt=1.-rust;
   }else if(L==7){ // 金属面板：拼缝、铆钉、划痕
     vec2 t=tile(u*2.,.02);vec2 q=abs(fract(u*2.)-.5);float rv=smoothstep(.03,.015,length(q-.44));
-    float sc=smoothstep(.75,.9,pn(u*vec2(140.,6.),64.));
+    float sc=smoothstep(.75,.9,pn(u*vec2(128.,8.),8.));
     c=vec3(.5)*(.95+.1*n)*(1.-.5*smoothstep(1.,.2,t.x))+sc*.1;h=.5-.3*smoothstep(1.,.2,t.x)+rv*.4;r=.3+.25*n+sc*.2;ao=.7+.3*smoothstep(.2,1.,t.x);mt=1.;
   }else if(L==8){ // 木板：木纹
     float pl=floor(u.y*6.),k=h21(vec2(pl,3.));float g=pn(vec2(u.x*6.+k*9.,u.y*90.),6.)*.6+pn(vec2(u.x*24.,u.y*240.),24.)*.4;
@@ -79,11 +79,13 @@ uniform highp sampler2DArray tMatA,tMatB;
 const float MSC[14]=float[14](1.,2.,4.,1.92,3.,2.4,2.4,2.4,2.,1.5,3.,3.6,1.2,2.);
 float hash21(vec2 p){vec3 q=fract(vec3(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}
 vec2 dBH=vec2(0.);
+// 材质层在相邻像素间跳变时（路缘、广场边、树干柱面投影的接缝）贴图坐标不连续，隐式导数会选错 mip，所以用显式梯度采样
 // 采样一层材质（t 为平铺坐标）：返回反照率系数，输出 粗糙度/AO/金属度，并用屏幕空间差分累计凹凸
-vec3 matS(float L,vec2 t,float bump,out vec3 ram){
-  vec3 q=vec3(t,L);vec4 a=texture(tMatA,q);ram=texture(tMatB,q).rgb;
-  dBH+=vec2(texture(tMatA,q+vec3(dFdx(t),0.)).a-a.a,texture(tMatA,q+vec3(dFdy(t),0.)).a-a.a)*bump;
+vec3 matG(float L,vec2 t,vec2 gx,vec2 gy,float bump,out vec3 ram){
+  vec3 q=vec3(t,L);vec4 a=textureGrad(tMatA,q,gx,gy);ram=textureGrad(tMatB,q,gx,gy).rgb;
+  dBH+=vec2(textureGrad(tMatA,q+vec3(gx,0.),gx,gy).a-a.a,textureGrad(tMatA,q+vec3(gy,0.),gx,gy).a-a.a)*bump;
   return a.rgb*2.;}
+vec3 matS(float L,vec2 t,float bump,out vec3 ram){return matG(L,t,dFdx(t),dFdy(t),bump,ram);}
 // 盒式投影：地面用 xz，墙面用"沿墙方向 + 高度"
 vec2 boxUV(vec3 p,vec3 n){if(abs(n.y)>.7)return p.xz;vec2 t=normalize(vec2(n.z,-n.x)+1e-5);return vec2(dot(p.xz,t),p.y);}
 // 不足一个像素宽的细长三角形上屏幕空间导数会退化，直接归一化会得到 NaN 法线（画面上的黑点），所以先检查再用
@@ -141,7 +143,8 @@ vec3 tN=normalize(vTn);float L=floor(vX.x*255.+.5);
 if(L>.5){
   // 材质层：aT.y>0 时用绕 Y 轴的柱面投影（树干、立柱），否则盒式投影
   vec2 t=vX.y>.5?vec2(atan(tN.x,tN.z)*.31831,vTp.y/MSC[int(L)]):boxUV(vTp,tN)/MSC[int(L)];
-  vec3 ram;dA*=matS(L,t,2.+vX.z*40.,ram);dG=1.-ram.r;dAO=ram.g;dMt=ram.b;
+  vec2 gx=dFdx(t),gy=dFdy(t);if(vX.y>.5){gx.x-=2.*floor(gx.x*.5+.5);gy.x-=2.*floor(gy.x*.5+.5);}
+  vec3 ram;dA*=matG(L,t,gx,gy,2.+vX.z*40.,ram);dG=1.-ram.r;dAO=ram.g;dMt=ram.b;
 }else{
   vec3 nz=texture2D(tNoise,(abs(tN.y)>.6?vTp.xz:(abs(tN.x)>.6?vTp.zy:vTp.xy))*.31).rgb;
   dA*=.9+.2*nz.r;dG*=.82+.36*nz.g;}
@@ -153,8 +156,8 @@ export const F_EMIS = `totalEmissiveRadiance+=dEm;`;
 export const F_NRM = `normal=bumpN(-vViewPosition,normal,dBH*(1.-smoothstep(20.,65.,length(vViewPosition))),faceDirection);`;
 export const F_LAMP = `reflectedLight.directDiffuse+=material.diffuseColor*vec3(1.,.7,.4)*lamps(vWp.xz)*.55*smoothstep(7.5,3.,vWp.y);`;
 export const F_OUT = `
-// 太阳在光滑表面上的镜面高光可能超出半浮点范围变成 Inf，经过色调映射会成黑点，先钳住
-gl_FragColor.rgb=mix(min(gl_FragColor.rgb,vec3(48.)),vec3(4.),dF);
+// 太阳在光滑表面上的镜面高光能到一两百，单个像素就会在泛光里炸成亮点，先钳住
+gl_FragColor.rgb=mix(min(gl_FragColor.rgb,vec3(16.)),vec3(4.),dF);
 {vec3 fd=vWp-cameraPosition;gl_FragColor.rgb=mix(gl_FragColor.rgb,hzc(fd),1.-exp(-pow(length(fd)*uFogK,1.5)));}
 `;
 
@@ -256,7 +259,7 @@ float skate=inner*(1.-sx)*(1.-sz)*(1.-plz)*(1.-road),yard=inner*sx*(1.-sz)*(1.-p
 // 每个片元只采样一种材质层：沥青 / 石板 / 混凝土 / 土壤 / 面包砖
 float urb=(1.-road)*(1.-plz)*(1.-skate)*(1.-yard)*(1.-grassZ);
 float L=road>.5?1.:plz>.5?11.:skate+yard>.5?2.:grassZ>.5?13.:dR<9.6?5.:2.;
-vec3 ram,base=matS(L,p/MSC[int(L)],L<1.5?5.:L>12.?5.:8.,ram);
+float msc=MSC[int(L)];vec3 ram,base=matG(L,p/msc,dFdx(p)/msc,dFdy(p)/msc,L<1.5?5.:L>12.?5.:8.,ram);
 float gl=1.-ram.r,dAO=ram.g;
 if(L<1.5){
   // 车道：补丁、裂缝、蓝色自行车道、磨损的标线
@@ -336,7 +339,7 @@ float gz(vec2 p){float r=length(p),sx=step(0.,p.x),sz=step(0.,p.y),dR=min(min(ab
 `;
 export const V_GRASS = `
 vec2 gw=uCamP.xz+mod(iO.xy-uCamP.xz,uGS)-uGS*.5;
-float gh=texture2D(tHF,(gw+256.)/512.).r,gd=distance(gw,uCamP.xz);
+float gh=texture2D(tHF,(gw+257.)/514.).r,gd=distance(gw,uCamP.xz);
 float gs=(.65+iO.z*.8)*gz(gw)*smoothstep(uGS*.5,uGS*.36,gd);
 float ga=iO.w*6.2831853,gc=cos(ga),gn=sin(ga);
 vec3 gp=vec3(position.x*gc-position.z*gn,position.y,position.x*gn+position.z*gc)*gs;
@@ -431,7 +434,7 @@ export const FS_SG = `
 varying vec3 vWp;varying vec2 vU;uniform sampler2D tMap;uniform float uK,uFogK,uNight;uniform vec3 uHor,uSunD;
 void main(){vec4 t=texture2D(tMap,vU);if(t.a<.5)discard;
   // 白天按朝向受光（法线由屏幕空间导数求出并朝向相机），夜里是自己发光的灯箱
-  vec3 n=normalize(cross(dFdx(vWp),dFdy(vWp)));n*=sign(dot(n,cameraPosition-vWp));
+  vec3 n=cross(dFdx(vWp),dFdy(vWp));float nl=dot(n,n);n=nl>1e-24&&nl<1e12?n*inversesqrt(nl):vec3(0.,1.,0.);n*=sign(dot(n,cameraPosition-vWp));
   vec3 c=pow(t.rgb,vec3(2.2))*uK*mix(.42+.85*max(dot(n,uSunD),0.),.8,uNight);
   gl_FragColor=vec4(mix(c,uHor,1.-exp(-pow(length(vWp-cameraPosition)*uFogK,1.5))),1.);}
 `;

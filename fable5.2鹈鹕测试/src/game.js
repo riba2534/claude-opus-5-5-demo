@@ -3,8 +3,8 @@ import { G, saveOpt } from './state.js';
 import { I, pollInput, endFrame, releaseLock, requestLock } from './input.js';
 import { PI, TAU, sin, cos, hypot, min, max, atan2, clamp, lerp, damp, wrapPi, rnd, random, pick, m4, T, ident, translate, rotY, rotX, rotZ, scale } from './math.js';
 import { Geo, SPH, CYL, BOX, lathe, torus } from './geo.js';
-import { render, setCam, draw, mesh, addLight, fx as post, setQuality, qName, cv, markDirty, pip } from './gfx.js';
-import { W, findSpot, groundH } from './world.js';
+import { render, setCam, draw, mesh, addLight, fx as post, setQuality, qName, cv, markDirty, pip, setGrassOn } from './gfx.js';
+import { W, findSpot, groundH, zone } from './world.js';
 import { env, updateEnv } from './env.js';
 import { newPlayer, updatePlayer, hurtPlayer, WEAPONS, magOf } from './player.js';
 import { updateEnemies, spawnEnemy, clearEnemies, KIND } from './enemies.js';
@@ -220,7 +220,7 @@ let menuA = 0;
 // 场景里一直在动的东西：共享单车、红绿灯、喷泉、落樱、飞鸟、能量墙、纪念碑气泡
 function ambient(rdt, p) {
   const c = G.cam, t = G.rt;
-  for (const b of W.bikes) { if (b[7] === undefined) b[7] = groundH(b[0], b[1]); if (hypot(b[0] - c.x, b[1] - c.z) < 110) drawBike(b[0], b[7], b[1], b[2], b[3], b[4], b[5], b[6]); }
+  for (const b of W.bikes) { if (b[7] === undefined) b[7] = groundH(b[0], b[1]); if (hypot(b[0] - c.x, b[1] - c.z) < 50) drawBike(b[0], b[7], b[1], b[2], b[3], b[4], b[5], b[6]); }
   // 红绿灯：14 秒一个周期，绿 → 黄 → 红
   for (const l of W.tl) {
     const k = (t / 14 + l.ph) % 1, st = k < 0.45 ? 0 : k < 0.52 ? 1 : 2;
@@ -248,7 +248,10 @@ function ambient(rdt, p) {
   draw(W.bubble, bm, 1, 1, 1, 0); W.bubbleSign.matrix.fromArray(bm); W.bubbleSign.matrixWorldNeedsUpdate = true;
   if (env.night > 0.2) addLight(0, 7.5, 0, 20, 0.6 * env.night, 1.2 * env.night, 2.4 * env.night);
   // 画中画镜头：固定在车头前方回看豆包
-  pip.on = G.state != 'menu' && !(G.cine > 0) ? 1 : 0;
+  pip.on = G.state == 'play' && !(G.cine > 0) && Math.abs(G.orb || 0) < 0.6 ? 1 : 0; // 主镜头已经在拍正面时（开场、选强化、结算）不用再画一遍
+  // 相机 30 米内有草地分区才提交草丛
+  let gr = 0; for (let i = 0; i < 17 && !gr; i++) { const a = i * 0.785, d = i ? (i > 8 ? 15 : 30) : 0, zn = zone(c.x + cos(a) * d, c.z + sin(a) * d); gr = zn == 1 || zn == 4; }
+  setGrassOn(gr);
   const q = pip.cam;
   q[0] = headCam[0]; q[1] = headCam[1]; q[2] = headCam[2]; q[3] = headPos[0]; q[4] = headPos[1] - 0.02; q[5] = headPos[2];
 }
@@ -271,7 +274,10 @@ export function step(rdt, sim) {
   } else if (G.state == 'perk') {
     // 选强化时场景继续运转，镜头绕到正面
     G.orbT = PI * 0.9 + sin(G.rt * 0.5) * 0.35; I.mx = I.mz = 0;
-    updatePlayer(rdt, rdt); updateEnemies(rdt); updatePickups(rdt, rdt); FX.updateFx(rdt, rdt);
+    // 场景继续运转，但增益倒计时和补给的过期时间在选择期间不走
+    const b0 = p.boost; updatePlayer(rdt, rdt); p.boost = b0; updateEnemies(rdt); updatePickups(rdt, rdt);
+    for (const k of G.pickups) k.t = min(k.t, 20);
+    FX.updateFx(rdt, rdt);
     if (!sim) updateAudio(rdt, p.spd, p.coast, !p.gnd);
   } else {
     if (I.pause && G.state == 'play') { pause(1); return 0; }

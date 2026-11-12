@@ -37,8 +37,8 @@ const USky = { uZen: { value: V3() }, uMoonD: { value: V3() }, uCl: { value: V3(
 
 const meshes = [];
 let matObj, matGround, matFac, matShell, matSign, sky, sun, hemi, pmrem, envScene, envRT, envT = -99, grassM, fcam, rtFace, texRes = 0;
-const pool = [];
-let matRT = [];
+const pool = [], fxMeshes = [], folMeshes = [];
+let matRT = [], grassOn = 1, pipOk = 0;
 // 粒子 / 光束实例缓冲
 const PMAX = 4096, TMAX = 1024;
 export const pbuf = new Float32Array(PMAX * 12), tbuf = new Float32Array(TMAX * 12);
@@ -182,7 +182,7 @@ export function initGfx(canvas, q) {
     g.setAttribute('position', new Float32BufferAttribute(quad, 3)); g.setIndex([0, 1, 2, 2, 1, 3]);
     ib.setUsage(DynamicDrawUsage);
     names.forEach((n, i) => g.setAttribute(n, new InterleavedBufferAttribute(ib, 4, i * 4)));
-    const m = new Mesh(g, sm(vs, fs, {}, addBlend)); m.frustumCulled = false; m.renderOrder = 20; scene.add(m);
+    const m = new Mesh(g, sm(vs, fs, {}, addBlend)); m.frustumCulled = false; m.renderOrder = 20; scene.add(m); fxMeshes.push(m);
     g.instanceCount = 0;
     return [g, ib];
   };
@@ -214,8 +214,11 @@ export function setQuality(n) {
   Q = TIERS[n]; qName = n; dirty = 1; envT = -99;
   if (sun) { sun.shadow.mapSize.set(Q.sh, Q.sh); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   if (renderer) bakeMaterials(Q.tex);
-  if (grassM) { grassM.geometry.instanceCount = Q.grass; grassM.visible = Q.grass > 0; }
+  if (grassM) { grassM.geometry.instanceCount = Q.grass; grassM.visible = Q.grass > 0 && !!grassOn; }
+  for (const m of folMeshes) m.castShadow = Q.sh > 1024; // 低档画质树叶不投影
 }
+// 相机附近没有草地时整批草丛不提交
+export function setGrassOn(b) { grassOn = b; if (grassM) grassM.visible = Q.grass > 0 && !!b; }
 
 // ---------- 网格 ----------
 function geom(g) {
@@ -264,7 +267,8 @@ const plain = (p, n, i, uv) => {
   return b;
 };
 export function groundMesh(p, n, i) {
-  const m = new Mesh(plain(p, n, i), matGround); m.receiveShadow = true; m.frustumCulled = false; m.matrixAutoUpdate = false;
+  const b = plain(p, n, i); b.computeBoundingSphere();
+  const m = new Mesh(b, matGround); m.receiveShadow = true; m.matrixAutoUpdate = false;
   scene.add(m);
   return m;
 }
@@ -277,20 +281,21 @@ export function facadeMesh(g) {
   scene.add(m);
   return m;
 }
-// 枝叶卡片：透明测试 + 双面 + 逆光透射；阴影通道用带同一张贴图的深度材质
+// 枝叶卡片：透明测试 + 双面 + 逆光透射；阴影通道用带同一张贴图的深度材质。
+// 卡片层层重叠、透明测试又让提前深度剔除失效，所以用便宜的 Lambert 着色而不是完整 PBR
 let matFol, depFol;
 export function foliageMesh(g, canvas) {
   if (!matFol) {
     const t = new CanvasTexture(canvas); t.colorSpace = SRGBColorSpace; t.anisotropy = 4;
-    matFol = withFog(new MeshStandardMaterial({ map: t, alphaTest: 0.42, side: DoubleSide, vertexColors: true, roughness: 0.8, metalness: 0 }), 'dbFol', S.V_FOL_PARS, S.V_FOL_BEGIN, S.F_FOL_LIGHT,
+    matFol = withFog(new MeshLambertMaterial({ map: t, alphaTest: 0.42, side: DoubleSide, vertexColors: true }), 'dbFol', S.V_FOL_PARS, S.V_FOL_BEGIN, S.F_FOL_LIGHT,
       { fMap: 'diffuseColor.a*=1.+length(vWp-cameraPosition)*.045;' }); // 远处提高不透明度，抵消 mipmap 把细碎叶片平均掉造成的树冠变稀
     depFol = new MeshDepthMaterial({ map: t, alphaTest: 0.42, side: DoubleSide, depthPacking: RGBADepthPacking });
   }
   const b = plain(g.p, g.n, g.i, g.uv);
   b.setAttribute('color', new Float32BufferAttribute(g.c, 3)); b.setAttribute('aSw', new Float32BufferAttribute(g.s, 1));
   b.computeBoundingSphere();
-  const m = new Mesh(b, matFol); m.castShadow = m.receiveShadow = true; m.matrixAutoUpdate = false; m.customDepthMaterial = depFol;
-  scene.add(m);
+  const m = new Mesh(b, matFol); m.receiveShadow = true; m.castShadow = Q.sh > 1024; m.matrixAutoUpdate = false; m.customDepthMaterial = depFol;
+  scene.add(m); folMeshes.push(m);
   return m;
 }
 // 草丛：实例数据只是 [0,S)² 内的随机偏移，顶点着色器按相机位置取模循环铺设，并从高度图取地形高度
@@ -312,7 +317,7 @@ export function grassField(canvas, hf, N) {
   const m = withFog(new MeshLambertMaterial({ map: t, alphaTest: 0.4, side: DoubleSide }), 'dbGrass', S.V_GRASS_PARS, S.V_GRASS, '',
     { grass: 1, fPars: 'varying float vGk;', fMap: 'diffuseColor.rgb*=mix(vec3(.72,.95,.5),vec3(1.1,1.12,.66),vGk);diffuseColor.a*=1.+length(vWp-cameraPosition)*.04;' });
   grassM = new Mesh(g, m); grassM.frustumCulled = false; grassM.receiveShadow = true; grassM.matrixAutoUpdate = false;
-  g.instanceCount = Q.grass; grassM.visible = Q.grass > 0;
+  g.instanceCount = Q.grass; grassM.visible = Q.grass > 0 && !!grassOn;
   scene.add(grassM);
 }
 // 豆包的头：贴图用模型自带的（侧面与后脑），正面沿 +Z 投影官方原图；proj = [u0, v0, du/dx, dv/dy]，ear = [x, y, z, 半径]
@@ -324,7 +329,7 @@ export function headMesh(g, faceCv, sideImg, proj, ear) {
     fPars: 'varying vec3 vLp,vLn;uniform sampler2D tFaceO,tNoise;uniform vec4 uProj,uEar;',
     // 模型贴图里烘焙的光影把头发压得很暗：按亮度把暗部提亮到官方头发的色调；多补的耳朵涂成头发色；再叠上官方原图
     fMap: `vec3 sd=diffuseColor.rgb;float sl=dot(sd,vec3(.3,.6,.1)),hk=smoothstep(.2,.08,sl)*smoothstep(.1,.02,sd.r-sd.b);
-      float ang=atan(vLp.x,vLp.z+.03),stn=texture2D(tNoise,vec2(ang*1.7,vLp.y*.3)).r;
+      float ang=atan(vLp.x,vLp.z+.03),stn=texture2D(tNoise,vec2(ang*.63662,vLp.y*.3)).r;
       vec3 hb=vec3(.1,.052,.04)*(.95+1.1*sl)*(.8+.4*stn)+vec3(.085,.055,.045)*smoothstep(.075,0.,abs(vLp.y-.4+.025*sin(ang*3.)))*(.4+.6*stn);
       sd=mix(sd,hb,max(hk,smoothstep(uEar.w,uEar.w*.55,distance(vLp,uEar.xyz))));
       vec4 of=texture2D(tFaceO,uProj.xy+vLp.xy*uProj.zw);float fw=of.a*smoothstep(-.06,.04,normalize(vLn).z);
@@ -447,16 +452,22 @@ export function render(env, t, dt, fx_, fy, fz) {
   // ---- 场景 ----
   renderer.setRenderTarget(rtScene); renderer.clear();
   renderer.render(scene, camera);
-  stats.calls = renderer.info.render.calls; stats.tris = renderer.info.render.triangles;
   // ---- 画中画：从正面拍豆包，复用已有阴影贴图 ----
-  const pon = pip.on && Q.pip;
-  if (pon) {
-    const q = pip.cam;
+  // 小窗在屏幕上只有一百来像素宽：渲染目标按屏幕上的直径建，隔一帧更新一次，并且不画草丛和粒子
+  const pon = pip.on && Q.pip, ps = W / cv.clientWidth;
+  if (pon && (frame & 1 || !pipOk)) {
+    const fs = min(384, max(96, Math.ceil((pip.r * 2 * ps * 1.25) / 32) * 32)), q = pip.cam, gv = grassM && grassM.visible;
+    if (rtFace.width != fs) rtFace.setSize(fs, fs);
     fcam.position.set(q[0], q[1], q[2]); fcam.lookAt(q[3], q[4], q[5]); fcam.updateMatrixWorld(true);
+    if (grassM) grassM.visible = false; for (const m of fxMeshes) m.visible = false;
     renderer.shadowMap.autoUpdate = false;
     renderer.setRenderTarget(rtFace); renderer.clear(); renderer.render(scene, fcam);
     renderer.shadowMap.autoUpdate = true;
+    if (grassM) grassM.visible = gv; for (const m of fxMeshes) m.visible = true;
+    pipOk = 1;
   }
+  if (!pon) pipOk = 0;
+  stats.calls = renderer.info.render.calls; stats.tris = renderer.info.render.triangles;
   // ---- 后处理 ----
   const depth = rtScene.depthTexture, tanH = Math.tan(view.fov / 2), nf = [camera.near, camera.far];
   let src = rtScene.texture;
@@ -495,7 +506,7 @@ export function render(env, t, dt, fx_, fy, fz) {
   u.uAoOn.value = ao ? 1 : 0; u.uTime.value = t; u.uAspect.value = W / H;
   u.uFx.value = [fx.dmg, fx.bt, fx.spd, fx.exp * env.exp]; u.uFx2.value = [fx.bloom, fx.fade, fx.flare * (1 - 0.65 * env.night), fx.key * (1 - 0.42 * env.night)];
   u.uExMax.value = 2.1 - 0.95 * env.night; // 夜里不让自动曝光把暗场景整体提亮
-  const ps = W / cv.clientWidth; u.uPip.value = [pip.x * ps, H - pip.y * ps, pip.r * ps, pon ? 1 : 0];
+  u.uPip.value = [pip.x * ps, H - pip.y * ps, pip.r * ps, pon ? 1 : 0];
   u.uSunCol.value.fromArray(env.LC).multiplyScalar(0.14);
   const sd = env.day > 0.02 ? env.sun : env.moon, m = view.vp, x = c[0] + sd[0] * 500, y = c[1] + sd[1] * 500, z = c[2] + sd[2] * 500;
   const sw = m[3] * x + m[7] * y + m[11] * z + m[15], sx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / sw * 0.5 + 0.5, sy = (m[1] * x + m[5] * y + m[9] * z + m[13]) / sw * 0.5 + 0.5;

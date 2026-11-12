@@ -191,9 +191,9 @@ export function updatePlayer(dt, rdt) {
       if (p.gnd) {
         if (gh - p.y > 0.5) { p.x = ox; p.z = oz; if (p.bonkT < 0 && p.spd > 4) { S.bonk(); c.shake = max(c.shake, 0.4); p.bonkT = 0.4; } p.spd *= -0.3; }
         else {
-          // 地面"掉下去"的速度变化超过重力所能提供的（坡道唇口、坡顶）就腾空，保留当前竖直速度
+          // 脚下的地面一下子低了一截（骑出平台或起跳台边缘），或者地面"掉下去"的速度变化超过重力所能提供的（坡道唇口、坡顶），就腾空并保留当前竖直速度
           const nv = (gh - p.y) / h;
-          if (p.vy - nv > GRAV * h + 1 && p.vy > 3) { p.gnd = 0; p.y = max(gh, p.y + p.vy * h); p.vy -= GRAV * h; p.airT = 0; p.jumps = 0; }
+          if (p.y - gh > 0.3 || (p.vy - nv > GRAV * h + 1 && p.vy > 3)) { p.gnd = 0; p.y = max(gh, p.y + p.vy * h); p.vy -= GRAV * h; p.airT = 0; p.jumps = 0; }
           // 台阶（路缘、平台边）：一个子步里抬升得比任何坡道都陡，只贴上去，不把它记成起跳初速
           else if (nv > 0.75 * max(p.spd, 2)) { p.y = gh; p.vy = 0; }
           else { p.vy = nv; p.y = gh; }
@@ -224,7 +224,7 @@ export function updatePlayer(dt, rdt) {
       } else { e.x += (dx / d) * (rr - d) * 0.6; e.z += (dz / d) * (rr - d) * 0.6; }
     }
     // ---- 武器 ----
-    const live = G.state == 'play' && !(G.cine > 0);
+    const live = G.state == 'play' && !(G.cine > 0) && abs(G.orb || 0) < 0.25; // 镜头还没转回身后时不能开火
     if (!live) { p.fireT = max(p.fireT, 0.15); } else if (I.wsel >= 0 && I.wsel != p.wpn) { p.wpn = I.wsel; p.rel = 0; p.fireT = max(p.fireT, 0.22); S.ui(); }
     if (live && I.wnext) { p.wpn = (p.wpn + I.wnext + 4) % 4; p.rel = 0; p.fireT = max(p.fireT, 0.22); S.ui(); }
     const w = p.wpn, W = WEAPONS[w];

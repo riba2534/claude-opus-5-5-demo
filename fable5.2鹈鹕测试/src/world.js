@@ -111,8 +111,11 @@ const CONT = [0x2f6fc4, 0xc4452f, 0x2f9a6c, 0xd9a21f, 0x7a62c9, 0xd8d4c8, 0x2a8f
 export function buildWorld(seed, img) {
   const R0 = rng(seed), rr = (a, b) => a + R0() * (b - a), pk = a => a[(R0() * a.length) | 0];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) HF[j * N + i] = rawH(-SZ / 2 + i * CS, -SZ / 2 + j * CS);
-  const geos = [], signs = [], F = newFac(), FF = newFac(), FL = newFol();
-  const G = (x, z) => { const r = hypot(x, z), k = (((atan2(z, x) + PI) / TAU) * 6 | 0) % 6 + (r > RING ? 6 : 0) + (r > ARENA + 6 ? 6 : 0); return geos[k] || (geos[k] = new Geo()); };
+  const geos = new Map(), fols = new Map(), signs = [], F = newFac(), FF = newFac(), CELL = 40;
+  const cell = (x, z) => floor((x + 280) / CELL) + floor((z + 280) / CELL) * 64;
+  const FLc = (x, z) => { const k = cell(x, z); let f = fols.get(k); if (!f) fols.set(k, (f = newFol())); return f; };
+  // 静态几何按 40 米的格子分块（每块一个网格），这样主视角、阴影和画中画三个通道都能剔除掉看不到的部分
+  const G = (x, z) => { const k = cell(x, z); let g = geos.get(k); if (!g) geos.set(k, (g = new Geo())); return g; };
   const circ = (x, z, r, y1, y0 = 0) => cols.push({ t: 0, x, z, r, y0, y1 });
   const obb = (x, z, hx, hz, rot, y1, y0 = 0, top = 0) => { const c = { t: 1, x, z, hx, hz, c: cos(rot), s: sin(rot), y0, y1, top, br: hypot(hx, hz) }; cols.push(c); if (top) tops.push(c); return c; };
   const sign = (x, y, z, rot, w, h, r) => signs.push({ m: T(x, y, z, 0, rot, 0, w, h, 1), r });
@@ -138,15 +141,15 @@ export function buildWorld(seed, img) {
     const a = R0() * TAU, r = rr(30, ARENA - 4), x = cos(a) * r, z = sin(a) * r, zn = zone(x, z);
     if ((zn != 1 && zn != 4) || dRoad(x, z) < 9 || fbm(x * 0.05 + 80, z * 0.05) < 0.42 || blocked(x, z, 2.4)) continue;
     const kind = zn == 1 ? (R0() < 0.42 ? 1 : 0) : R0() < 0.45 ? 2 : 0, s = rr(0.9, 1.3), y = terrH(x, z);
-    circ(x, z, 0.3 * s, tree(G(x, z), FL, R0, x, y, z, s, kind)); n++;
+    circ(x, z, 0.3 * s, tree(G(x, z), FLc(x, z), R0, x, y, z, s, kind)); n++;
     if (kind == 1) W.sak.push([x, y + 5 * s, z]);
   }
-  for (let i = 0; i < 130; i++) { const a = R0() * TAU, r = i < 70 ? rr(ARENA + 5, ARENA + 22) : rr(ARENA + 14, 172), x = cos(a) * r, z = sin(a) * r; tree(G(x, z), FL, R0, x, terrH(x, z), z, rr(1.3, 2.1), R0() < 0.45 ? 2 : 0, 1); }
+  for (let i = 0; i < 130; i++) { const a = R0() * TAU, r = i < 70 ? rr(ARENA + 5, ARENA + 22) : rr(ARENA + 14, 172), x = cos(a) * r, z = sin(a) * r; tree(G(x, z), FLc(x, z), R0, x, terrH(x, z), z, rr(1.3, 2.1), R0() < 0.45 ? 2 : 0, 1); }
   // 行道树：沿十字路人行道外侧
   for (let k = 0; k < 4; k++) for (const lon of [39, 53, 67, 95, 109]) for (const sd of [-1, 1]) {
     const a = (k * PI) / 2, x = sin(a) * lon + cos(a) * sd * 7.9, z = cos(a) * lon - sin(a) * sd * 7.9;
     if (blocked(x, z, 1.2)) continue;
-    const s = rr(0.8, 1); circ(x, z, 0.28, tree(G(x, z), FL, R0, x, terrH(x, z), z, s, 0, 0, 1));
+    const s = rr(0.8, 1); circ(x, z, 0.28, tree(G(x, z), FLc(x, z), R0, x, terrH(x, z), z, s, 0, 0, 1));
     G(x, z).m(4, 0.2).add(cyl(0.212 * s, 0.168 * s, 1.15, 10), T(x, 0, z), 0xe9e7e0, 0, 0.2).m(0);
     G(x, z).m(11, 0.3).add(BOX, T(x, 0.03, z, 0, a, 0, 1.3, 0.06, 1.3), 0x8a8780, 0, 0.3).m(0);
   }
@@ -155,7 +158,7 @@ export function buildWorld(seed, img) {
     if ((zn != 1 && zn != 4) || dRoad(x, z) < 7.6 || blocked(x, z, 0.9)) continue;
     const g = G(x, z), y = terrH(x, z), s = rr(0.35, 0.8); n++;
     if (R0() < 0.3) { g.m(2, 0.9).add(SPL, T(x, y + s * 0.15, z, rr(0, 1), rr(0, 6), 0, s * 1.3, s * 0.75, s), 0x9a9a96, 0, 0.2).m(0); if (s > 0.6) circ(x, z, s * 0.8, y + s * 0.8); }
-    else bush(FL, R0, x, y, z, s * 1.3, s * 1.5, R0() < 0.5);
+    else bush(FLc(x, z), R0, x, y, z, s * 1.3, s * 1.5, R0() < 0.5);
   }
 
   // --- 路灯（位置与着色器里的解析灯光池一致）---
@@ -189,7 +192,7 @@ export function buildWorld(seed, img) {
       const a = (i / 8) * TAU + PI / 8, x = cos(a) * 19, z = sin(a) * 19;
       g.m(11, 0.3).add(lathe([[0, 0], [1.25, 0], [1.25, 0], [1.4, 0.7], [1.4, 0.7], [1.15, 0.7], [1.15, 0.7], [1.15, 0.55], [1.15, 0.55], [0, 0.55]], 16), T(x, 0, z), 0xd4d0c8, 0, 0.4);
       g.m(13, 0.5).add(CYL, T(x, 0.5, z, 0, 0, 0, 1.15, 0.08, 1.15), 0x8a6a4a, 0, 0.1).m(0);
-      bush(FL, R0, x, 0.55, z, 1, 1.3, 1);
+      bush(FLc(x, z), R0, x, 0.55, z, 1, 1.3, 1);
       circ(x, z, 1.4, 0.75);
       const b = a + PI / 8, bx = cos(b) * 22.5, bz = sin(b) * 22.5, ry = PI / 2 - b;
       if (abs(bx) > 7 && abs(bz) > 7) {
@@ -330,21 +333,22 @@ export function buildWorld(seed, img) {
     g.add(wall, null, (x, y) => (y > 3 ? 0x04101e : 0x3f9dff));
     W.wall = mesh(g, 1, 1);
   }
-  geos.forEach(g => g && staticMesh(g));
+  geos.forEach(g => staticMesh(g));
   facadeMesh(F); facadeMesh(FF);
-  foliageMesh(FL, leafAtlas(R0));
+  { const la = leafAtlas(R0); fols.forEach(f => foliageMesh(f, la)); }
   grassField(grassTex(R0), HF, N);
-  // --- 地形网格 ---
+  // --- 地形网格：按 64 米一块拆开 ---
   {
-    const p = new Float32Array(N * N * 3), nn = new Float32Array(N * N * 3), idx = new Uint32Array((N - 1) * (N - 1) * 6);
-    const H = (i, j) => HF[clamp(j, 0, N - 1) * N + clamp(i, 0, N - 1)];
-    for (let j = 0, o = 0; j < N; j++) for (let i = 0; i < N; i++, o += 3) {
-      p[o] = -SZ / 2 + i * CS; p[o + 1] = HF[j * N + i]; p[o + 2] = -SZ / 2 + j * CS;
-      const nx = H(i - 1, j) - H(i + 1, j), nz = H(i, j - 1) - H(i, j + 1), l = hypot(nx, 2 * CS, nz);
-      nn[o] = nx / l; nn[o + 1] = (2 * CS) / l; nn[o + 2] = nz / l;
+    const H = (i, j) => HF[clamp(j, 0, N - 1) * N + clamp(i, 0, N - 1)], CH = 32, W1 = CH + 1;
+    for (let cj = 0; cj < N - 1; cj += CH) for (let ci = 0; ci < N - 1; ci += CH) {
+      const p = [], nn = [], idx = [];
+      for (let j = 0; j <= CH; j++) for (let i = 0; i <= CH; i++) {
+        const I = ci + i, J = cj + j, nx = H(I - 1, J) - H(I + 1, J), nz = H(I, J - 1) - H(I, J + 1), l = hypot(nx, 2 * CS, nz);
+        p.push(-SZ / 2 + I * CS, HF[J * N + I], -SZ / 2 + J * CS); nn.push(nx / l, (2 * CS) / l, nz / l);
+      }
+      for (let j = 0; j < CH; j++) for (let i = 0; i < CH; i++) { const a = j * W1 + i; idx.push(a, a + W1, a + 1, a + 1, a + W1, a + W1 + 1); }
+      groundMesh(p, nn, idx);
     }
-    for (let j = 0, o = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) { const a = j * N + i; idx[o++] = a; idx[o++] = a + N; idx[o++] = a + 1; idx[o++] = a + 1; idx[o++] = a + N; idx[o++] = a + N + 1; }
-    groundMesh(p, nn, Array.from(idx));
   }
   setSignAtlas(makeAtlas(img));
   signMesh(signs, AS);

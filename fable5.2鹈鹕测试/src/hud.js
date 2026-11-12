@@ -12,7 +12,7 @@ const cache = {}, set = (k, v, f) => { if (cache[k] !== v) { cache[k] = v; f(v);
 let oc, c, dpr = 1, W = 1, H = 1, sayT = 0, hit = 0, hitK = 0;
 const pr = [0, 0];
 
-let pipN = 0;
+let pipN = 0, safeL = 0;
 export function initHud(img) {
   oc = $('o'); c = oc.getContext('2d');
   const a = avatarURL(img, 256);
@@ -38,6 +38,7 @@ export function updateHud(rdt) {
   if (sayT > 0) { sayT -= rdt; if (sayT <= 0) $('say').classList.remove('on'); }
   if (G.state != 'play' && G.state != 'over' && G.state != 'perk') return;
   // 画中画的位置跟随 HUD 里的圆形头像框；画质不支持画中画时退回静态官方头像
+  if (pipN % 120 == 0) safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sl')) || 0;
   if (pipN++ % 12 == 0 || cache.pipon !== pip.on) { cache.pipon = pip.on; const r = $('cam').getBoundingClientRect(); pip.x = r.left + r.width / 2; pip.y = r.top + r.height / 2; pip.r = r.width / 2 - 3; set('pipimg', Q.pip && pip.on ? 1 : 0, v => ($('av').style.opacity = v ? 0 : 1)); }
   // ---- DOM ----
   set('hp', Math.ceil(p.hp), v => { $('hpn').textContent = v; $('hp').firstChild.style.transform = `scaleX(${max(p.hp / p.mhp, 0)})`; });
@@ -76,7 +77,7 @@ export function updateHud(rdt) {
     c.fillStyle = k > 0.5 ? '#ff5d7d' : '#ffb020'; c.fillRect(pr[0] - bw / 2, pr[1], bw * k, 4);
     if (e.sh > 0) { c.fillStyle = '#ffb060'; c.fillRect(pr[0] - bw / 2, pr[1] - 4, bw * min(e.sh / 140, 1), 2.5); }
   }
-  if (!p.dead && G.state == 'play' && !(G.cine > 0)) {
+  if (!p.dead && G.state == 'play' && !(G.cine > 0) && abs(G.orb || 0) < 0.25) {
     // 准星：随连射热度与车速扩散；瞄到敌人变红
     const g = 7 + p.heat * 16 + min(p.spd / 20, 1) * 4 - p.ads * 3, tc = p.target ? '#ff4d6d' : '#fff';
     c.strokeStyle = 'rgba(10,18,40,.6)'; c.lineWidth = 4; c.lineCap = 'round';
@@ -103,7 +104,7 @@ export function updateHud(rdt) {
     }
   }
   // ---- 雷达 ----
-  const R = W < 760 || H < 520 ? 50 : 74, mx = 18 + R + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sl')) || 0), my = H - 18 - R, s = R / 62;
+  const R = W < 760 || H < 520 ? 50 : 74, mx = 18 + R + safeL, my = H - 18 - R, s = R / 62;
   const fy = sin(cam.yaw), fz = cos(cam.yaw), mp = (x, z) => { const dx = x - p.x, dz = z - p.z; pr[0] = mx + (-dx * fz + dz * fy) * s; pr[1] = my - (dx * fy + dz * fz) * s; };
   c.save(); c.beginPath(); c.arc(mx, my, R, 0, TAU); c.fillStyle = 'rgba(12,24,54,.62)'; c.fill(); c.clip();
   mp(0, 0); const ox = pr[0], oy = pr[1];

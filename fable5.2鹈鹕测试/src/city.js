@@ -177,7 +177,9 @@ export function car(C, x, z, ry, kind) {
   // 车轮
   for (const e of [-1, 1]) for (const lz of [L * 0.31, -L * 0.3]) g.add(DISC, M(e * (Wd - 0.025), 0.36, lz, 0, 0.07, 0.42, 0.42), 0x0c0c0e, 0, 0.2);
   for (const e of [-1, 1]) for (const lz of [L * 0.31, -L * 0.3]) { const m = M(e * (Wd - 0.1), 0.33, lz, 0, 0.22 * e, 0.33, 0.33); const o = g.p.length / 3; g.add({ p: WHEEL.p, n: WHEEL.n, i: WHEEL.i }, m, 0x18191c, 0, 0.3); for (let k = 0; k < WHEEL.c.length / 12; k++) for (let q = 0; q < 8; q++) g.c[(o + k) * 12 + q] = WHEEL.c[k * 12 + q]; }
-  C.obb(x, z, Wd + 0.05, L / 2 + 0.05, ry, y1 + ch + 0.04, 0, 1);
+  // 碰撞分两块：车身（引擎盖和后备箱可以骑上去）和车舱
+  C.obb(x, z, Wd + 0.05, L / 2 + 0.05, ry, y1, 0, 1);
+  { const lz = (zb + zf) / 2; C.obb(x + lz * s, z + lz * c, Wd - 0.08, (zf - zb) / 2 - 0.1, ry, y1 + ch + 0.04, y1 - 0.02, 1); }
 }
 
 // ---------- 街道设施 ----------
