@@ -12,7 +12,8 @@ const YAX = new THREE.Vector3(0, 1, 0);
 
 const eulerQ = (x, y, z, out) => out.setFromEuler(_e.set(x * DEG, y * DEG, z * DEG, 'XYZ'));
 // 手臂方向（按左臂书写，右臂自动镜像）：elev -90 垂下 / 0 平举 / 85 上举；azim 0 侧平、90 向前、180 横过身体。
-// twist 决定手肘往哪边弯：手臂上举时 0 是向后弯，-90 是向内（头顶）弯；侧平举时 0 向前弯，90 向上弯
+// twist 决定手肘往哪边弯：手臂往侧上方举时，约 65 是向内（头顶）弯；侧平举时 0 向前弯，90 向上弯。
+// 手臂是按真人比例做的：肘弯超过 100 度、上臂又抬得高，手就会挡住脸，所以胸前的动作上臂都压得比较低
 function armQ(elev, azim, twist, out) {
   const e = elev * DEG;
   const a = azim * DEG;
@@ -140,42 +141,42 @@ const M = mirrorSpec;
 }
 {
   const a = { x: 0.1, chest: [0, 0, -4], armL: [-24, 25], elbowL: 26, armR: [-24, 25], elbowR: 26, legL: [0, 16, 0], legR: [0, 4, 0] };
-  const b = { x: 0.1, head: [-8, 0, 0], armL: [-26, 104, 0], elbowL: 62, armR: [-26, 104, 0], elbowR: 62, legL: [0, 6, 0], legR: [0, 6, 0], kneeL: 14, kneeR: 14, expr: 'happy' };
+  const b = { x: 0.1, head: [-8, 0, 0], armL: [-40, 104, 0], elbowL: 62, armR: [-40, 104, 0], elbowR: 62, legL: [0, 6, 0], legR: [0, 6, 0], kneeL: 14, kneeR: 14, expr: 'happy' };
   move('clap', 4, [[0, a], [1, b], [2, M(a)], [3, M(b)]], { bounce: 9 });
 }
 {
-  const a = { spine: [10, 0, 0], armL: [-30, 80], elbowL: 122, armR: [-30, 80], elbowR: 122, legL: [22, 8, 0], legR: [22, 8, 0], kneeL: 48, kneeR: 48 };
+  const a = { spine: [10, 0, 0], armL: [-70, 80], elbowL: 125, armR: [-70, 80], elbowR: 125, legL: [22, 8, 0], legR: [22, 8, 0], kneeL: 48, kneeR: 48 };
   const b = { air: 0.14, chest: [-6, 0, -5], armR: [80, 40], elbowR: 5, armL: [-50, 30], elbowL: 60, legL: [6, 6, 0], legR: [-8, 6, 0], kneeL: 30, kneeR: 20, expr: 'happy' };
   move('pump', 4, [[0, a], [0.5, b], [1, a], [1.5, M(b)], [2, a], [2.5, b], [3, a], [3.5, M(b)]], { bounce: 0, snap: 0.05 });
 }
 {
   const open = { turn: 0, armL: [6, 20], elbowL: 10, armR: [6, 20], elbowR: 10, legL: [0, 10, 0], legR: [0, 10, 0] };
-  const tuck1 = { turn: 120, armL: [-20, 92], elbowL: 112, armR: [-20, 92], elbowR: 112, legR: [30, 0, 0], kneeR: 70 };
+  const tuck1 = { turn: 120, armL: [-55, 95], elbowL: 105, armR: [-55, 95], elbowR: 105, legR: [30, 0, 0], kneeR: 70 };
   const tuck2 = { ...tuck1, turn: 240 };
   const tada = { turn: 360, hips: [0, 0, -6], head: [0, 0, 6], armR: [60, 20], elbowR: 4, armL: [-30, -22], elbowL: 96, legL: [0, 18, 0], legR: [0, 3, 0], expr: 'wink' };
   const tada2 = { ...tada, hips: [0, 0, 6], head: [0, 0, -4] };
   move('spin', 4, [[0, open], [0.67, tuck1], [1.33, tuck2], [2, tada], [3, tada2]], { bounce: 4, snap: 0.05 });
 }
 {
-  const a = { spine: [4, 0, 0], chest: [0, -14, 0], legR: [62, 0, 0], kneeR: 86, armL: [-34, 80], elbowL: 96, armR: [-46, -50], elbowR: 70 };
+  const a = { spine: [4, 0, 0], chest: [0, -14, 0], legR: [62, 0, 0], kneeR: 86, armL: [-55, 80], elbowL: 92, armR: [-46, -50], elbowR: 70 };
   const b = { spine: [-12, 0, 0], head: [8, 0, 0], legR: [78, 0, 0], kneeR: 6, footR: -20, armL: [0, -10], elbowL: 8, armR: [0, -10], elbowR: 8 };
   move('kick', 4, [[0, a], [1, b], [2, M(a)], [3, M(b)]], { bounce: 5, snap: 0.3 });
 }
 {
-  const a = { x: 0.04, hips: [0, 0, 6], chest: [0, 0, 5], head: [0, 0, 10], armL: [58, 78, -90], elbowL: 100, armR: [58, 78, -90], elbowR: 100, legL: [0, 14, 0], legR: [0, 3, 0], kneeR: 18, expr: 'happy' };
+  const a = { x: 0.04, hips: [0, 0, 6], chest: [0, 0, 5], head: [0, 0, 10], armL: [55, 15, 67], elbowL: 80, armR: [55, 15, 67], elbowR: 80, legL: [0, 14, 0], legR: [0, 3, 0], kneeR: 18, expr: 'happy' };
   move('heart', 4, [[0, a], [1, M(a)], [2, a], [3, M(a)]], { bounce: 7, snap: 0.2 });
 }
 {
-  const a = { air: 0.03, hips: [0, 8, 0], chest: [0, -16, 0], legR: [58, 4, 0], kneeR: 82, armL: [-28, 76], elbowL: 100, armR: [-55, -45], elbowR: 66 };
+  const a = { air: 0.03, hips: [0, 8, 0], chest: [0, -16, 0], legR: [58, 4, 0], kneeR: 82, armL: [-60, 76], elbowL: 95, armR: [-55, -45], elbowR: 66 };
   const n = { legL: [10, 6, 0], legR: [10, 6, 0], kneeL: 28, kneeR: 28, armL: [-55, 40], elbowL: 70, armR: [-55, 40], elbowR: 70 };
   move('shuffle', 4, [[0, a], [0.5, n], [1, M(a)], [1.5, n], [2, a], [2.5, n], [3, M(a)], [3.5, n]], { bounce: 0, snap: 0.05 });
 }
 {
-  const a = { hips: [0, 26, 3], chest: [0, -42, 0], head: [0, 16, 0], armL: [-40, 62], elbowL: 94, armR: [-40, -30], elbowR: 94, legL: [6, 8, 18], legR: [6, 8, -18], kneeL: 26, kneeR: 26 };
+  const a = { hips: [0, 26, 3], chest: [0, -42, 0], head: [0, 16, 0], armL: [-55, 62], elbowL: 90, armR: [-55, -30], elbowR: 80, legL: [6, 8, 18], legR: [6, 8, -18], kneeL: 26, kneeR: 26 };
   move('twist', 4, [[0, a], [1, M(a)], [2, a], [3, M(a)]], { bounce: 6, snap: 0.1 });
 }
 {
-  const c = { spine: [14, 0, 0], head: [10, 0, 0], armL: [-30, 120], elbowL: 70, armR: [-30, 120], elbowR: 70, legL: [24, 4, 0], legR: [24, 4, 0], kneeL: 52, kneeR: 52 };
+  const c = { spine: [14, 0, 0], head: [10, 0, 0], armL: [-50, 120], elbowL: 70, armR: [-50, 120], elbowR: 70, legL: [24, 4, 0], legR: [24, 4, 0], kneeL: 52, kneeR: 52 };
   const s = { air: 0.2, head: [-10, 0, 0], armL: [42, 0], elbowL: 0, armR: [42, 0], elbowR: 0, legL: [0, 30, 0], legR: [0, 30, 0], kneeL: 0, kneeR: 0, expr: 'happy' };
   const v = { hips: [0, 0, 5], armL: [62, 10], elbowL: 5, armR: [62, 10], elbowR: 5, legL: [0, 18, 0], legR: [0, 18, 0], expr: 'happy' };
   move('star', 4, [[0, c], [0.5, s], [1, c], [1.5, s], [2, c], [2.5, v], [3.25, M(v)]], { bounce: 0, snap: 0.05 });
@@ -187,7 +188,7 @@ const M = mirrorSpec;
 }
 {
   const a = { air: 0.12, armL: [76, 20], elbowL: 8, armR: [60, 30], elbowR: 20, legL: [0, 10, 0], legR: [10, 6, 0], kneeR: 40, expr: 'happy' };
-  const n = { armL: [-20, 70], elbowL: 110, armR: [-20, 70], elbowR: 110, legL: [18, 6, 0], legR: [18, 6, 0], kneeL: 40, kneeR: 40, expr: 'happy' };
+  const n = { armL: [-70, 75], elbowL: 125, armR: [-70, 75], elbowR: 125, legL: [18, 6, 0], legR: [18, 6, 0], kneeL: 40, kneeR: 40, expr: 'happy' };
   move('cheer', 2, [[0, n], [0.5, a], [1, n], [1.5, M(a)]], { bounce: 0, snap: 0.05 });
 }
 {
@@ -207,7 +208,7 @@ move(
 );
 move('poseL', 1, [[0, { hips: [0, 0, -6], chest: [0, 14, 6], head: [0, 20, 0], armL: [22, 0], elbowL: 4, armR: [-44, -25], elbowR: 100, legL: [0, 22, 0], legR: [0, 4, 0], kneeR: 14, expr: 'wink' }]], { once: true, bounce: 0 });
 move('poseU', 1, [[0, { air: 0.16, armL: [66, 10], elbowL: 4, armR: [66, 10], elbowR: 4, legL: [10, 14, 0], legR: [10, 14, 0], kneeL: 40, kneeR: 40, expr: 'happy' }]], { once: true, bounce: 0 });
-move('poseD', 1, [[0, { spine: [16, 0, 0], head: [-14, 0, 6], armL: [-10, 75], elbowL: 120, armR: [-30, 60], elbowR: 70, legL: [40, 14, 0], legR: [40, 14, 0], kneeL: 88, kneeR: 88, expr: 'wow' }]], { once: true, bounce: 0 });
+move('poseD', 1, [[0, { spine: [16, 0, 0], head: [-14, 0, 6], armL: [-50, 80], elbowL: 120, armR: [-45, 60], elbowR: 70, legL: [40, 14, 0], legR: [40, 14, 0], kneeL: 88, kneeR: 88, expr: 'wow' }]], { once: true, bounce: 0 });
 
 export const FREE_POSES = ['poseL', 'poseD', 'poseU', 'poseLM']; // 对应 ← ↓ ↑ →
 
@@ -323,7 +324,7 @@ export function createAnimator(dancer) {
       dancer.root.updateMatrixWorld(true);
       const base = dancer.root.matrixWorld.elements[13];
       const low = Math.min(J.footL.matrixWorld.elements[13], J.footR.matrixWorld.elements[13]) - base;
-      J.hips.position.y += 0.066 - low + P.air;
+      J.hips.position.y += dancer.ankleY - low + P.air;
 
       if (P.expr) dancer.poseExpr(P.expr);
     },

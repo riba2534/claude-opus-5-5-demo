@@ -1,36 +1,38 @@
-// Q 版舞者：骨架是一棵 Object3D 关节树，身体由基础几何体拼装，脸是 Canvas 现画的表情贴图。
+// 舞者：骨架是一棵骨头树，身体是 body.js 生成的蒙皮曲面。
+// 豆包的头是官方形象的 3D 头模；三位对手的头由几何体拼成，脸是 Canvas 现画的表情贴图。
 import * as THREE from 'three';
 import { TAU, clamp, rng } from './util.js';
 import { createDoubaoHead } from './dbhead.js';
+import { JOINTS, DIM, HIP_Y, createSkeleton, buildBody, topFront, softMat, charLight } from './body.js';
 
-export const JOINTS = [
-  'hips', 'spine', 'chest', 'neck', 'head',
-  'armL', 'foreL', 'handL', 'armR', 'foreR', 'handR',
-  'legL', 'shinL', 'footL', 'legR', 'shinR', 'footR',
-];
+export { JOINTS };
+// 所有角色材质共用的轮廓光颜色，由舞台灯光每帧更新
+export const rimUniform = charLight.uRim;
 
 export const DANCERS = {
   // 头发、肤色取自官方头像；服装按官方视频里的常规造型：
-  // 宽松黑色短袖 T 恤（领口露一圈白边）、深色卷边长裤、白色运动鞋
+  // 宽松的黑色落肩 T 恤（领口露一圈白边）、深色锥形牛仔裤配浅色翻边、白色运动鞋
   doubao: {
     name: '豆包',
     hair: 'bob',
     hairColor: '#473935',
-    skin: '#fadfd7',
-    neck: '#eab9a8',
+    skin: '#f3cdbf',
     eye: '#5a3a30',
-    top: '#2a2a31',
+    topStyle: 'tee',
+    sleeves: 'short',
+    top: '#2b2b31',
+    collar: '#f4f1ee',
+    hood: false,
+    pants: true,
+    bottom: '#1b1e2a',
+    pantsCuff: '#4a5470',
+    shoe: '#e4e4e8',
+    shoeCap: '#d9dce3',
+    sole: '#dedcd6',
+    outsole: '#aab1bd',
+    laces: '#ececee',
     accent: '#f4f1ee',
     accent2: '#cae4fe',
-    collar: '#f4f1ee',
-    sleeves: 'short',
-    hood: false,
-    belt: false,
-    pants: '#3a4560',
-    pantsCuff: '#55627f',
-    bottom: '#3a4560',
-    shoe: '#ffffff',
-    sole: '#dfe6f2',
   },
   naihuang: {
     name: '奶黄',
@@ -38,12 +40,23 @@ export const DANCERS = {
     hairColor: '#8a5530',
     skin: '#ffe6d2',
     eye: '#c07a20',
+    topStyle: 'hoodie',
+    sleeves: 'long',
     top: '#ffd95a',
+    rib: '#ffc93a',
+    hood: true,
+    bottom: '#fff6dc',
+    skirtTrim: '#ffb84d',
+    shorts: '#efe2bd',
+    socks: '#ffffff',
+    sockTop: 0.2,
+    sockBand: '#ffb84d',
+    shoe: '#f4f4f4',
+    shoeCap: '#fff0c4',
+    sole: '#ffb84d',
+    outsole: '#e09a30',
     accent: '#ffffff',
     accent2: '#ff9d4d',
-    bottom: '#fff6dc',
-    shoe: '#ffffff',
-    sole: '#ffb84d',
     emblem: '黄',
   },
   matcha: {
@@ -52,12 +65,23 @@ export const DANCERS = {
     hairColor: '#23463c',
     skin: '#ffe0cc',
     eye: '#3f8f5a',
+    topStyle: 'fitted',
+    sleeves: 'short',
     top: '#a8dc86',
+    collar: '#f7f4e6',
+    hood: false,
+    bottom: '#3d6b52',
+    skirtTrim: '#f7f4e6',
+    shorts: '#2f5340',
+    socks: '#f7f4e6',
+    sockTop: 0.31,
+    sockBand: '#5fae6a',
+    shoe: '#f7f4e6',
+    shoeCap: '#e4efd6',
+    sole: '#5fae6a',
+    outsole: '#3f8f5a',
     accent: '#f7f4e6',
     accent2: '#5fae6a',
-    bottom: '#3d6b52',
-    shoe: '#f7f4e6',
-    sole: '#5fae6a',
     emblem: '茶',
   },
   zhima: {
@@ -66,49 +90,27 @@ export const DANCERS = {
     hairColor: '#d9d9e8',
     skin: '#ffe0cc',
     eye: '#7a6bb0',
+    topStyle: 'hoodie',
+    sleeves: 'long',
     top: '#2b2b38',
+    rib: '#ff5f8f',
+    hood: false,
+    bottom: '#40404f',
+    skirtTrim: '#ff5f8f',
+    shorts: '#2b2b38',
+    socks: '#2b2b38',
+    sockTop: 0.25,
+    sockBand: '#ff5f8f',
+    shoe: '#32323f',
+    shoeCap: '#2b2b38',
+    sole: '#ff5f8f',
+    outsole: '#d94674',
+    laces: '#ff5f8f',
     accent: '#c9c9dc',
     accent2: '#ff5f8f',
-    bottom: '#40404f',
-    shoe: '#2b2b38',
-    sole: '#ff5f8f',
     emblem: '芝',
   },
 };
-
-// ---------------------------------------------------------------- 共享资源
-const gradTex = (() => {
-  // 背光面为 0：暗部只靠环境光，三盏方向光叠加才不会过曝
-  const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0, 140, 212, 255, 255]), 8, 1, THREE.RedFormat);
-  t.minFilter = t.magFilter = THREE.NearestFilter;
-  t.needsUpdate = true;
-  return t;
-})();
-
-// 所有卡通材质共用的轮廓光颜色，由舞台灯光每帧更新
-export const rimUniform = { value: new THREE.Color(0.25, 0.3, 0.6) };
-
-function toon(color, opts = {}) {
-  const m = new THREE.MeshToonMaterial({ color, gradientMap: gradTex, ...opts });
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uRim = rimUniform;
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uRim;')
-      .replace(
-        '#include <opaque_fragment>',
-        'float rimF = pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 2.4);\noutgoingLight += uRim * rimF;\n#include <opaque_fragment>',
-      );
-  };
-  m.customProgramCacheKey = () => 'toon-rim';
-  return m;
-}
-
-const outlineMat = new THREE.ShaderMaterial({
-  uniforms: { uThick: { value: 0.0075 }, uColor: { value: new THREE.Color('#2a1d47') } },
-  vertexShader: 'uniform float uThick; void main(){ vec3 p = position + normalize(normal) * uThick; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }',
-  fragmentShader: 'uniform vec3 uColor; void main(){ gl_FragColor = vec4(uColor, 1.0); }',
-  side: THREE.BackSide,
-});
 
 // ---------------------------------------------------------------- 几何体小工具
 function ell(rx, ry, rz, seg = 22) {
@@ -116,7 +118,7 @@ function ell(rx, ry, rz, seg = 22) {
   squash(g, rx, ry, rz);
   return g;
 }
-// 把单位球压成椭球，并写入解析法线，避免缩放后轮廓线粗细不均
+// 把单位球压成椭球，并写入解析法线
 function squash(g, rx, ry, rz) {
   const p = g.attributes.position;
   const n = g.attributes.normal;
@@ -129,22 +131,6 @@ function squash(g, rx, ry, rz) {
   }
   return g;
 }
-// 关节在顶端、向下生长的肢体胶囊，可上下收窄
-function limb(rTop, rBot, len, seg = 12) {
-  const r = Math.max(rTop, rBot);
-  const g = new THREE.CapsuleGeometry(r, len, 5, seg, 4);
-  g.translate(0, -len / 2, 0);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const t = clamp(-p.getY(i) / len, 0, 1);
-    const s = (rTop + (rBot - rTop) * t) / r;
-    p.setX(i, p.getX(i) * s);
-    p.setZ(i, p.getZ(i) * s);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-
 // ---------------------------------------------------------------- 表情贴图
 const EXPRS = ['smile', 'blink', 'happy', 'wow', 'oops', 'wink'];
 
@@ -360,155 +346,52 @@ function emblemTexture(ch, bg, fg) {
 // ---------------------------------------------------------------- 建模
 export function createDancer(specId, opts = {}) {
   const spec = DANCERS[specId];
-  const outline = opts.outline !== false;
   const faceSize = opts.faceSize || 256;
   const rand = rng(specId.length * 977 + specId.charCodeAt(0));
 
   const mats = {
-    skin: toon(spec.skin),
-    hair: toon(spec.hairColor, { side: THREE.DoubleSide }),
-    top: toon(spec.top),
-    accent: toon(spec.accent),
-    accent2: toon(spec.accent2),
-    bottom: toon(spec.bottom, { side: THREE.DoubleSide }),
-    shoe: toon(spec.shoe),
-    sole: toon(spec.sole),
-    white: toon('#ffffff'),
+    skin: softMat(spec.skin, { skin: 1, gloss: 0.12 }),
+    hair: softMat(spec.hairColor, { hair: true, double: true }),
+    top: softMat(spec.top),
+    accent: softMat(spec.accent),
+    accent2: softMat(spec.accent2),
   };
 
   const root = new THREE.Group();
   root.name = spec.name;
-  const J = {};
-  const mk = (name, parent, x, y, z) => {
-    const o = new THREE.Object3D();
-    o.name = name;
-    o.position.set(x, y, z);
-    parent.add(o);
-    J[name] = o;
-    return o;
-  };
-  // 约 3.5 头身：四肢够长，举手能过头顶，舞蹈动作才看得清
-  const THIGH = 0.25;
-  const SHIN = 0.25;
-  const UPPER = 0.185;
-  const FORE = 0.175;
-  const HIP_Y = 0.02 + THIGH + SHIN + 0.066;
-  mk('hips', root, 0, HIP_Y, 0);
-  mk('spine', J.hips, 0, 0.04, 0);
-  mk('chest', J.spine, 0, 0.11, 0);
-  mk('neck', J.chest, 0, 0.145, 0);
-  mk('head', J.neck, 0, 0.04, 0);
-  for (const s of [1, -1]) {
-    const k = s > 0 ? 'L' : 'R';
-    mk('arm' + k, J.chest, 0.128 * s, 0.1, 0);
-    mk('fore' + k, J['arm' + k], 0, -UPPER, 0);
-    mk('hand' + k, J['fore' + k], 0, -FORE, 0);
-    mk('leg' + k, J.hips, 0.064 * s, -0.02, 0);
-    mk('shin' + k, J['leg' + k], 0, -THIGH, 0);
-    mk('foot' + k, J['shin' + k], 0, -SHIN, 0);
-  }
-
-  const add = (parent, geo, mat, p, r, noOutline) => {
+  const J = createSkeleton(root);
+  const add = (parent, geo, mat, p, r) => {
     const m = new THREE.Mesh(geo, mat);
     if (p) m.position.set(p[0], p[1], p[2]);
     if (r) m.rotation.set(r[0], r[1], r[2]);
     parent.add(m);
-    if (outline && !noOutline) m.add(new THREE.Mesh(geo, outlineMat));
     return m;
   };
 
-  // --- 躯干
-  add(J.hips, ell(0.112, 0.085, 0.098), mats.bottom, [0, -0.008, 0]);
-  add(J.spine, ell(0.102, 0.098, 0.088), mats.top, [0, 0.045, 0]);
-  add(J.chest, ell(0.124, 0.116, 0.098), mats.top, [0, 0.056, 0]);
-  if (spec.belt !== false) add(J.spine, new THREE.TorusGeometry(0.1, 0.016, 8, 24), mats.accent, [0, -0.012, 0], [Math.PI / 2, 0, 0]);
-  // 长裤造型：T 恤下摆盖住胯部上沿
-  if (spec.pants) add(J.hips, ell(0.117, 0.058, 0.101), mats.top, [0, 0.034, 0]);
-  add(J.neck, new THREE.CylinderGeometry(0.034, 0.038, 0.1, 12), spec.neck ? toon(spec.neck) : mats.skin, [0, 0.015, 0], null, true);
-  // 兜帽
+  // --- 身体：一个蒙皮网格，绑定姿势是双臂自然下垂
+  const body = buildBody(J, spec);
+  root.add(body.mesh);
+  root.updateMatrixWorld(true);
+  body.mesh.bind(new THREE.Skeleton(body.bones));
+
+  // 兜帽：垂在颈后的一团
   let hood = null;
-  if (spec.hood !== false) {
+  if (spec.hood) {
     hood = new THREE.Object3D();
-    hood.position.set(0, 0.138, -0.07);
+    hood.position.set(0, DIM.neck - 0.012, -0.078);
     J.chest.add(hood);
-    add(hood, ell(0.098, 0.066, 0.058), mats.top, [0, -0.015, -0.02], [-0.35, 0, 0]);
-  }
-  // 圆领：官方头像里黑色上衣露出的那圈白色内搭
-  if (spec.collar) {
-    add(J.chest, new THREE.TorusGeometry(0.052, 0.017, 10, 28), toon(spec.collar), [0, 0.148, 0.004], [Math.PI / 2 - 0.16, 0, 0]);
+    add(hood, ell(0.088, 0.058, 0.05), mats.top, [0, -0.014, -0.016], [-0.38, 0, 0]);
   }
   // 胸口徽章
   let emblem = null;
   if (spec.emblem) {
     emblem = new THREE.Mesh(
-      new THREE.CircleGeometry(0.04, 24),
+      new THREE.CircleGeometry(0.036, 24),
       new THREE.MeshBasicMaterial({ map: emblemTexture(spec.emblem, spec.accent, spec.top), transparent: true }),
     );
-    emblem.position.set(0, 0.066, 0.0985);
-    emblem.rotation.x = -0.08;
+    emblem.position.set(0, 0.105, topFront(spec.topStyle, 0.96 + 0.105) + 0.0015);
+    emblem.rotation.x = -0.06;
     J.chest.add(emblem);
-  }
-
-  // --- 裙摆（带褶）
-  const skirtPivot = new THREE.Object3D();
-  skirtPivot.position.set(0, 0.05, 0);
-  J.hips.add(skirtPivot);
-  if (!spec.pants) {
-    const pts = [
-      [0.1, 0.02],
-      [0.118, -0.01],
-      [0.152, -0.075],
-      [0.186, -0.15],
-      [0.192, -0.168],
-    ].map(([r, y]) => new THREE.Vector2(r, y));
-    const g = new THREE.LatheGeometry(pts, 48);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const xx = p.getX(i);
-      const zz = p.getZ(i);
-      const yy = p.getY(i);
-      const a = Math.atan2(zz, xx);
-      const t = clamp((0.02 - yy) / 0.19, 0, 1);
-      const k = 1 + Math.cos(a * 14) * 0.085 * t;
-      p.setX(i, xx * k);
-      p.setZ(i, zz * k);
-    }
-    g.computeVertexNormals();
-    add(skirtPivot, g, mats.bottom, null, null, false);
-    // 裙边一圈亮色
-    add(skirtPivot, new THREE.TorusGeometry(0.19, 0.008, 6, 40), mats.accent, [0, -0.166, 0], [Math.PI / 2, 0, 0], true);
-  }
-
-  // --- 四肢
-  for (const s of [1, -1]) {
-    const k = s > 0 ? 'L' : 'R';
-    if (spec.sleeves === 'short') {
-      // 短袖：袖子只盖到上臂中段，比手臂宽一圈
-      add(J['arm' + k], limb(0.041, 0.037, UPPER), mats.skin);
-      add(J['arm' + k], limb(0.057, 0.058, UPPER * 0.56), mats.top);
-      add(J['arm' + k], ell(0.058, 0.054, 0.058, 14), mats.top, [0, 0, 0]);
-      add(J['fore' + k], limb(0.037, 0.033, FORE - 0.012), mats.skin);
-    } else {
-      add(J['arm' + k], limb(0.046, 0.04, UPPER), mats.top);
-      add(J['arm' + k], ell(0.052, 0.05, 0.052, 14), mats.top, [0, 0, 0]);
-      add(J['fore' + k], limb(0.04, 0.036, FORE - 0.012), mats.top);
-      add(J['fore' + k], new THREE.TorusGeometry(0.038, 0.013, 8, 16), mats.accent, [0, -FORE + 0.02, 0], [Math.PI / 2, 0, 0]);
-    }
-    add(J['hand' + k], ell(0.043, 0.047, 0.04, 14), mats.skin, [0, -0.022, 0]);
-    if (spec.pants) {
-      // 长裤：直筒，裤脚卷一道边
-      add(J['leg' + k], limb(0.061, 0.053, THIGH), mats.bottom);
-      add(J['shin' + k], limb(0.053, 0.05, SHIN - 0.03), mats.bottom);
-      add(J['shin' + k], new THREE.TorusGeometry(0.05, 0.013, 8, 16), toon(spec.pantsCuff || spec.pants), [0, -SHIN + 0.03, 0], [Math.PI / 2, 0, 0]);
-      add(J['shin' + k], limb(0.036, 0.035, 0.03), mats.skin, [0, -SHIN + 0.03, 0], null, true);
-    } else {
-      add(J['leg' + k], limb(0.056, 0.046, THIGH), mats.skin);
-      add(J['shin' + k], limb(0.045, 0.038, SHIN - 0.01), mats.skin);
-      add(J['shin' + k], limb(0.047, 0.043, 0.11), mats.white, [0, -SHIN + 0.115, 0]);
-      add(J['shin' + k], new THREE.TorusGeometry(0.046, 0.008, 6, 16), mats.accent, [0, -SHIN + 0.11, 0], [Math.PI / 2, 0, 0], true);
-    }
-    add(J['foot' + k], ell(0.054, 0.044, 0.094, 16), mats.shoe, [0, -0.018, 0.032]);
-    add(J['foot' + k], ell(0.057, 0.017, 0.098, 16), mats.sole, [0, -0.05, 0.032]);
   }
 
   // 头发、裙摆、兜帽的惯性摆动
@@ -517,11 +400,11 @@ export function createDancer(specId, opts = {}) {
     bobbles.push({ obj, gain, k, d, limit, ax: 0, az: 0, vx: 0, vz: 0, last: new THREE.Vector3(), init: false, rest: obj.rotation.clone() });
   };
 
-  // --- 头：豆包用官方头像贴图做的浮雕头，其它角色用几何体拼的头
+  // --- 头：豆包用官方形象的 3D 头模，其它角色用几何体拼的头
   let headC;
   let faceApi;
   if (opts.officialHead) {
-    const oh = createDoubaoHead(opts.officialHead, rimUniform);
+    const oh = createDoubaoHead(opts.officialHead);
     J.head.add(oh.group);
     headC = new THREE.Object3D();
     headC.position.set(0, oh.centerY, 0.02);
@@ -535,11 +418,26 @@ export function createDancer(specId, opts = {}) {
     const R = 0.186;
     const K = R / 0.215; // 头部配件按头的大小等比缩放
     const HS = [1, 0.94, 0.965];
+    // 头里面的零件都按 R = 0.186 摆放，整体再缩到和 5 头身的身体相称
+    const HEAD_K = 0.93;
     const headC = new THREE.Object3D();
-    headC.position.set(0, 0.15, 0.01);
+    headC.position.set(0, R * HS[1] * HEAD_K - 0.014, 0.008);
+    headC.scale.setScalar(HEAD_K);
     J.head.add(headC);
-    add(headC, ell(R * HS[0], R * HS[1], R * HS[2], 32), mats.skin);
-    for (const s of [1, -1]) add(headC, ell(0.027, 0.034, 0.02, 10), mats.skin, [R * 0.97 * s, -0.012, -0.005]);
+    // 下半张脸往下巴收窄，不再是一个正椭球
+    const shapeHead = (g) => {
+      const q = g.attributes.position;
+      for (let i = 0; i < q.count; i++) {
+        const t = Math.max(0, -q.getY(i) / (R * HS[1]));
+        q.setXYZ(i, q.getX(i) * (1 - 0.2 * t * t), q.getY(i), q.getZ(i) * (1 - 0.08 * t * t));
+      }
+      g.computeVertexNormals();
+      return g;
+    };
+    add(headC, shapeHead(ell(R * HS[0], R * HS[1], R * HS[2], 40)), mats.skin);
+    for (const s of [1, -1]) add(headC, ell(0.027, 0.034, 0.02, 10), mats.skin, [R * 0.95 * s, -0.012, -0.005]);
+    // 一个小小的鼻尖，侧面看才有轮廓
+    add(headC, ell(0.0125, 0.0105, 0.013, 10), mats.skin, [0, -R * 0.2, R * 0.945]);
 
     // 表情
     const faces = {};
@@ -555,6 +453,7 @@ export function createDancer(specId, opts = {}) {
     const PH = 0.64 * Math.PI;
     const faceGeo = new THREE.SphereGeometry(R * 1.004, 28, 20, Math.PI / 2 - PH / 2, PH, 0.26 * Math.PI, 0.54 * Math.PI);
     faceGeo.scale(HS[0], HS[1], HS[2]);
+    shapeHead(faceGeo);
     const faceMat = new THREE.MeshBasicMaterial({ map: faces.smile, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const face = new THREE.Mesh(faceGeo, faceMat);
     headC.add(face);
@@ -592,6 +491,8 @@ export function createDancer(specId, opts = {}) {
       return pivot;
     };
 
+    // 鬓角：刘海和两侧头发之间补一撮，不然会露出一块头皮
+    for (const sd of [1, -1]) tuft(headC, 0.275 * Math.PI, sd * 0.97, 0.062, 0.082, 0.03, -sd * 0.25, 1.02, 0.3);
     if (spec.hair === 'bob') {
       add(headC, shellGeo(0.7, 0.62), mats.hair, [0, 0.006, -0.006]);
       add(headC, capGeo(0.3), mats.hair, [0, 0.006, -0.006]);
@@ -618,7 +519,7 @@ export function createDancer(specId, opts = {}) {
       add(clip, ell(0.027, 0.019, 0.013, 10), mats.accent2, [-0.011, 0, 0]);
       add(clip, ell(0.027, 0.019, 0.013, 10), mats.accent2, [0.013, 0.005, 0]);
     } else if (spec.hair === 'buns') {
-      add(headC, shellGeo(0.62, 0.66), mats.hair, [0, 0.006, -0.006]);
+      add(headC, shellGeo(0.72, 0.66), mats.hair, [0, 0.006, -0.006]);
       add(headC, capGeo(0.3), mats.hair, [0, 0.006, -0.006]);
       for (let i = 0; i < 7; i++) tuft(headC, 0.24 * Math.PI, -0.69 + i * 0.23, 0.064, 0.057 + Math.abs(i - 3) * 0.006, 0.03, 0, 1.03, 0.35);
       for (const s of [1, -1]) {
@@ -631,7 +532,7 @@ export function createDancer(specId, opts = {}) {
         tuft(headC, 0.42 * Math.PI, s * 1.04, 0.036, 0.085, 0.04, 0, 1.0, 0.3);
       }
     } else if (spec.hair === 'pony') {
-      add(headC, shellGeo(0.58, 0.64), mats.hair, [0, 0.006, -0.006]);
+      add(headC, shellGeo(0.74, 0.64), mats.hair, [0, 0.006, -0.006]);
       add(headC, capGeo(0.3), mats.hair, [0, 0.006, -0.006]);
       const fr = [
         [-0.68, 0.07, 0.074, -0.25],
@@ -644,8 +545,8 @@ export function createDancer(specId, opts = {}) {
       for (const s of [1, -1]) tuft(headC, 0.42 * Math.PI, s * 1.04, 0.03, 0.1, 0.035, 0, 1.0, 0.3);
       // 高马尾：三节，逐节摆动
       const base = new THREE.Object3D();
-      base.position.set(0, 0.13, -0.138);
-      base.rotation.x = -0.9;
+      base.position.set(0, 0.125, -0.15);
+      base.rotation.x = 0.75;
       headC.add(base);
       add(base, new THREE.TorusGeometry(0.035, 0.013, 6, 14), mats.accent2, null, [Math.PI / 2, 0, 0]);
       let parent = base;
@@ -657,7 +558,7 @@ export function createDancer(specId, opts = {}) {
       seg.forEach(([r, len], i) => {
         const pv = new THREE.Object3D();
         pv.position.set(0, i === 0 ? 0 : -seg[i - 1][1] * 1.5, 0);
-        pv.rotation.x = i === 0 ? 0 : 0.35;
+        pv.rotation.x = i === 0 ? 0 : -0.3;
         parent.add(pv);
         add(pv, ell(r, len, r * 0.9, 12), mats.hair, [0, -len * 0.75, 0]);
         bobble(pv, 0.06 + i * 0.02, 70, 6, 0.6);
@@ -665,7 +566,7 @@ export function createDancer(specId, opts = {}) {
       });
     } else {
       // 反戴棒球帽 + 银色短发
-      add(headC, shellGeo(0.56, 0.66), mats.hair, [0, 0.006, -0.006]);
+      add(headC, shellGeo(0.7, 0.66), mats.hair, [0, 0.006, -0.006]);
       for (let i = 0; i < 6; i++) tuft(headC, 0.27 * Math.PI, -0.6 + i * 0.24, 0.05, 0.05, 0.03, (rand() - 0.5) * 0.7, 1.03, 0.3);
       for (const s of [1, -1]) tuft(headC, 0.42 * Math.PI, s * 1.04, 0.03, 0.075, 0.034, 0, 1.0, 0.3);
       const cap = new THREE.Object3D();
@@ -674,7 +575,7 @@ export function createDancer(specId, opts = {}) {
       headC.add(cap);
       const dome = new THREE.SphereGeometry(hairR * 1.03, 28, 10, 0, TAU, 0, 0.36 * Math.PI);
       dome.scale(HS[0], HS[1] * 1.04, HS[2] * 1.03);
-      add(cap, dome, mats.top);
+      add(cap, dome, softMat(spec.top, { double: true }));
       add(cap, new THREE.TorusGeometry(hairR * 0.93, 0.011, 6, 32), mats.accent2, [0, 0.08, 0], [Math.PI / 2, 0, 0], true);
       const brim = new THREE.CylinderGeometry(0.112, 0.112, 0.013, 20, 1, false, Math.PI * 0.62, Math.PI * 0.76);
       add(cap, brim, mats.top, [0, 0.073, -0.112], [0.2, 0, 0]);
@@ -692,21 +593,7 @@ export function createDancer(specId, opts = {}) {
     };
   }
 
-  // 颈挂耳机（豆包专属）
-  if (spec.headphones) {
-    const hpMat = toon(spec.headphones);
-    const hp = new THREE.Object3D();
-    hp.position.set(0, 0.16, 0.004);
-    hp.rotation.x = 0.22;
-    J.chest.add(hp);
-    add(hp, new THREE.TorusGeometry(0.082, 0.013, 8, 20, Math.PI), hpMat, null, [-Math.PI / 2, 0, 0]);
-    for (const s of [1, -1]) {
-      add(hp, new THREE.CylinderGeometry(0.037, 0.037, 0.03, 16), hpMat, [0.084 * s, -0.004, 0.02], [0, 0, Math.PI / 2]);
-      add(hp, new THREE.CylinderGeometry(0.026, 0.026, 0.034, 16), mats.white, [0.084 * s, -0.004, 0.02], [0, 0, Math.PI / 2], true);
-    }
-  }
-
-  bobble(skirtPivot, 0.035, 120, 10, 0.22);
+  if (!spec.pants) bobble(J.skirt, 0.03, 120, 10, 0.2);
   if (hood) bobble(hood, 0.03, 100, 9, 0.3);
 
   // ------------------------------------------------------------ 运行时
@@ -725,6 +612,8 @@ export function createDancer(specId, opts = {}) {
     joints: J,
     headC,
     hipY: HIP_Y,
+    ankleY: DIM.ankle,
+    triangles: body.triangles,
     ok: true,
     // lock 为 true 时，在 hold 秒内不会被舞蹈动作自带的表情覆盖
     setExpr(name, hold = 0, lock = false) {

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { rimUniform } from './character.js';
+import { charLight } from './body.js';
 import { TAU, clamp, damp, mod, rng } from './util.js';
 
 const STAGE_R = 6.2;
@@ -648,6 +649,15 @@ export function createStage(scene, opts = {}) {
     rimA.intensity = rimB.intensity = 0.9 + E * 0.7 + pulse * 0.4;
     rimUniform.value.copy(cur[0]).lerp(cur[1], 0.5 + 0.5 * Math.sin(time * 0.9)).multiplyScalar(0.16 + E * 0.2 + st.flash * 0.3);
     st.faceLight = clamp(0.82 * dim + 0.12 + st.flash * 0.1, 0.5, 1.05);
+    // 把这一帧的灯光交给角色着色器
+    charLight.uKeyDir.value.copy(key.position).normalize();
+    charLight.uKeyCol.value.copy(key.color).multiplyScalar(key.intensity);
+    charLight.uSky.value.copy(hemi.color).multiplyScalar(hemi.intensity);
+    charLight.uGround.value.copy(hemi.groundColor).multiplyScalar(hemi.intensity);
+    charLight.uRimADir.value.copy(rimA.position).normalize();
+    charLight.uRimACol.value.copy(rimA.color).multiplyScalar(rimA.intensity);
+    charLight.uRimBDir.value.copy(rimB.position).normalize();
+    charLight.uRimBCol.value.copy(rimB.color).multiplyScalar(rimB.intensity);
 
     stripMat.color.copy(cur[2]);
     strips[0].material.color.copy(cur[2]).multiplyScalar(1.2 + pulse * 1.3 * E);

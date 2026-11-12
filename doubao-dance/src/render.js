@@ -8,10 +8,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { clamp, damp } from './util.js';
 
 export const QUALITY = {
-  high: { name: 'high', dpr: 2, msaa: 4, bloom: true, reflect: true, reflectSize: 768, crowd: 260, particles: 1600, rivalOutline: true },
+  high: { name: 'high', dpr: 2, msaa: 4, bloom: true, reflect: true, reflectSize: 768, crowd: 260, particles: 1600 },
   // 手机默认落在这一档：镜面反射要把整个场景多画一遍，对手描边又把角色的绘制次数翻倍，这两样都关掉
-  medium: { name: 'medium', dpr: 1.5, msaa: 2, bloom: true, reflect: false, reflectSize: 512, crowd: 160, particles: 1200, rivalOutline: false },
-  low: { name: 'low', dpr: 1, msaa: 0, bloom: true, reflect: false, reflectSize: 256, crowd: 90, particles: 700, rivalOutline: false },
+  medium: { name: 'medium', dpr: 1.5, msaa: 2, bloom: true, reflect: false, reflectSize: 512, crowd: 160, particles: 1200 },
+  low: { name: 'low', dpr: 1, msaa: 0, bloom: true, reflect: false, reflectSize: 256, crowd: 90, particles: 700 },
 };
 
 export function pickQuality(pref) {
@@ -59,22 +59,25 @@ const FINAL_SHADER = {
 
 // 镜头位：主角站在 (0, 0, 0.9)
 const SHOTS = {
-  title: { pos: [0.2, 1.05, 4.6], look: [0, 0.78, 0.9], fov: 34 },
-  select: { pos: [-0.3, 1.25, 5.4], look: [0, 0.8, 0.5], fov: 36 },
-  front: { pos: [0, 1.4, 6.3], look: [0, 0.8, 0.5], fov: 36 },
-  frontL: { pos: [-2.7, 1.25, 5.5], look: [0, 0.82, 0.5], fov: 36 },
-  frontR: { pos: [2.7, 1.25, 5.5], look: [0, 0.82, 0.5], fov: 36 },
-  low: { pos: [1.5, 0.42, 4.5], look: [0, 0.92, 0.7], fov: 42 },
-  lowL: { pos: [-1.5, 0.42, 4.5], look: [0, 0.92, 0.7], fov: 42 },
-  close: { pos: [0.55, 1.15, 3.7], look: [0, 0.9, 0.9], fov: 32 },
-  wide: { pos: [0, 3.3, 11.2], look: [0, 1.3, -1], fov: 40 },
-  crane: { pos: [3.8, 4.0, 8.2], look: [0, 0.7, -0.2], fov: 38 },
-  craneL: { pos: [-3.8, 4.0, 8.2], look: [0, 0.7, -0.2], fov: 38 },
-  results: { pos: [0.9, 1.15, 4.4], look: [0.15, 0.85, 0.9], fov: 34 },
+  title: { pos: [0.2, 1.1, 4.7], look: [0, 0.87, 0.9], fov: 34 },
+  select: { pos: [-0.3, 1.3, 5.7], look: [0, 0.9, 0.5], fov: 36 },
+  front: { pos: [0, 1.5, 6.6], look: [0, 0.92, 0.5], fov: 36 },
+  frontL: { pos: [-2.8, 1.35, 5.8], look: [0, 0.94, 0.5], fov: 36 },
+  frontR: { pos: [2.8, 1.35, 5.8], look: [0, 0.94, 0.5], fov: 36 },
+  low: { pos: [1.6, 0.45, 4.9], look: [0, 1.02, 0.7], fov: 42 },
+  lowL: { pos: [-1.6, 0.45, 4.9], look: [0, 1.02, 0.7], fov: 42 },
+  close: { pos: [0.7, 1.38, 5.2], look: [0, 1.2, 0.9], fov: 32 },
+  wide: { pos: [0, 3.4, 11.4], look: [0, 1.38, -1], fov: 40 },
+  crane: { pos: [3.9, 4.1, 8.4], look: [0, 0.82, -0.2], fov: 38 },
+  craneL: { pos: [-3.9, 4.1, 8.4], look: [0, 0.82, -0.2], fov: 38 },
+  results: { pos: [0.95, 1.25, 4.8], look: [0.15, 0.97, 0.9], fov: 34 },
   // 调试用机位
-  face: { pos: [0.3, 1.12, 2.2], look: [0, 1.06, 0.9], fov: 30 },
-  body: { pos: [0.5, 0.95, 3.75], look: [0, 0.72, 0.9], fov: 30 },
-  bodyS: { pos: [2.85, 0.95, 1.4], look: [0, 0.72, 0.9], fov: 30 },
+  face: { pos: [0.28, 1.5, 2.0], look: [0, 1.44, 0.9], fov: 30 },
+  body: { pos: [0.5, 1.0, 4.5], look: [0, 0.83, 0.9], fov: 30 },
+  bodyS: { pos: [3.5, 1.0, 1.6], look: [0, 0.83, 0.9], fov: 30 },
+  torso: { pos: [0.35, 1.15, 2.7], look: [0, 1.08, 0.9], fov: 30 },
+  hand: { pos: [0.75, 0.82, 1.75], look: [0.16, 0.7, 0.9], fov: 22 },
+  feet: { pos: [0.55, 0.3, 1.9], look: [0.02, 0.1, 0.9], fov: 26 },
 };
 const SEQUENCES = {
   verse: ['front', 'frontL', 'low', 'frontR', 'close', 'lowL'],
@@ -162,8 +165,10 @@ export function createRender(canvas, quality) {
   let seqName = null;
   let seqIdx = 0;
   let seqBar = -99;
+  let zoom = 0;
   const director = {
     shot: 'title',
+    zoomOut: 0,
     set(name, cut = false) {
       const s = SHOTS[name];
       if (!s) return;
@@ -213,7 +218,8 @@ export function createRender(canvas, quality) {
       shake = Math.max(0, shake - dt * 5);
       // 竖屏时把视角放宽，保证主角完整入镜
       const portrait = clamp((1.15 - R.aspect) / 0.65, 0, 1);
-      camera.fov = fov * (1 + portrait * 0.42) - punch * 2.2;
+      zoom = damp(zoom, director.zoomOut, 3, dt);
+      camera.fov = (fov * (1 + portrait * 0.42) - punch * 2.2) * (1 + zoom * 0.22);
       camera.position.copy(pos);
       camera.position.x += Math.sin(time * 0.31) * 0.16 + (Math.sin(time * 37) + Math.sin(time * 53)) * 0.012 * shake;
       camera.position.y += Math.sin(time * 0.23 + 1) * 0.06 + (Math.sin(time * 41) + Math.sin(time * 59)) * 0.012 * shake;

@@ -7,7 +7,7 @@ const [outDir = '/tmp/dd-shots/poses', shot = 'body', movesArg = 'idle,step', be
 const exe = process.env.CHROME || `${process.env.HOME}/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome`;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'] });
-const W = 300, H = 380;
+const W = +(process.env.PW || 300), H = +(process.env.PH || 380);
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 const errs = [];
 page.on('pageerror', (e) => errs.push(e.message));

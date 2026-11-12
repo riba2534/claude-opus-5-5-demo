@@ -13,6 +13,7 @@ import meta from './assets/head.json';
 import meshBin from './assets/head3d.bin';
 import sideUrl from './assets/head3d.webp';
 import mesh3d from './assets/head3d.json';
+import { charLight, LIGHT_GLSL } from './body.js';
 
 export const DOUBAO_AVATAR = avatarUrl;
 export const DOUBAO_COLORS = meta.colors;
@@ -28,8 +29,9 @@ const EXPR = {
   wink: [null, 'happy'],
 };
 
-// 头模在世界里的大小：模型坐标里下巴到头顶约 0.66，这里缩到约 0.45
-const SCALE = 0.686;
+// 头模在世界里的大小：模型坐标里下巴到头顶约 0.66，这里缩到约 0.35。
+// 官方全身图里头宽大约是肩宽的四分之三，按这个比例定的
+const SCALE = 0.53;
 // 脖子中心在模型坐标里的前后位置
 const NECK_Z = -0.045;
 
@@ -45,17 +47,17 @@ function loadImage(url) {
 const HEAD_VERT = /* glsl */ `
   varying vec3 vP;
   varying vec3 vNo;
-  varying vec3 vNv;
-  varying vec3 vV;
+  varying vec3 vNw;
+  varying vec3 vW;
   varying vec2 vUv;
   void main() {
     vP = position;
     vNo = normal;
     vUv = uv;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vNv = normalize(normalMatrix * normal);
-    vV = normalize(-mv.xyz);
-    gl_Position = projectionMatrix * mv;
+    vec4 w = modelMatrix * vec4(position, 1.0);
+    vW = w.xyz;
+    vNw = mat3(modelMatrix) * normal;
+    gl_Position = projectionMatrix * viewMatrix * w;
   }`;
 // 两张贴图都不做 sRGB 自动解码：先在 sRGB 空间里把官方图和模型贴图混好，再统一转线性。
 // uFront 以预乘 alpha 上传，采样后要先除回去。
@@ -67,12 +69,13 @@ const HEAD_FRAG = /* glsl */ `
   uniform vec3 uHair;
   uniform vec3 uSkin;
   uniform vec4 uEar;
+  uniform float uNeckY;
   uniform vec3 uTint;
-  uniform vec3 uRim;
+  ${LIGHT_GLSL}
   varying vec3 vP;
   varying vec3 vNo;
-  varying vec3 vNv;
-  varying vec3 vV;
+  varying vec3 vNw;
+  varying vec3 vW;
   varying vec2 vUv;
   vec3 toLinear(vec3 c) {
     return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
@@ -81,35 +84,73 @@ const HEAD_FRAG = /* glsl */ `
     // 官方图沿 -Z 投影：模型的 xy → 图标坐标 → 头部裁剪图的坐标
     vec2 icon = vec2(uAlign.x + uAlign.z * vP.x, uAlign.y - uAlign.w * vP.y);
     vec2 fuv = (icon - uCrop.xy) / uCrop.zw;
-    vec4 f = texture2D(uFront, vec2(fuv.x, 1.0 - fuv.y));
+    vec2 puv = vec2(fuv.x, 1.0 - fuv.y);
+    vec4 f = texture2D(uFront, puv);
     vec3 front = clamp(f.rgb / max(f.a, 0.001), 0.0, 1.0);
+    // 同一个位置再取一份模糊的：只要大致的颜色和明暗，不要五官的细节
+    vec4 fq = texture2D(uFront, puv, 3.2);
+    vec3 fb = clamp(fq.rgb / max(fq.a, 0.001), 0.0, 1.0);
     float inside = step(0.0, fuv.x) * step(fuv.x, 1.0) * step(0.0, fuv.y) * step(fuv.y, 1.0);
     float nz = normalize(vNo).z;
-    // 脸的范围（裁剪图坐标里的一个椭圆），只对朝前的半边头有效
-    vec2 fc = (fuv - vec2(0.57, 0.6)) / vec2(0.37, 0.37);
-    float face = (1.0 - smoothstep(0.8, 1.0, dot(fc, fc))) * smoothstep(-0.25, 0.0, nz);
+    const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 
-    // 侧面和后脑：模型自带的贴图只取它的明暗，颜色用官方图里量到的发色和肤色。
-    // 图生 3D 的贴图偏色，头发上还带一大片烘焙进去的高光，直接用会发白。
+    // 这一块表面是头发还是皮肤，有两个来源，各有各的毛病：
+    //   模型自带的贴图知道表面本身是什么，但它自己画的五官也是深色，贴图岛边缘还会串色；
+    //   官方图知道正面看过去是什么，但侧着的面（比如垂在脸旁的那缕头发的侧壁）会投到别的东西上。
+    // 所以朝前的半边以官方图为准、但模型说是头发的地方不算皮肤；背面只有发梢以下的脖子是皮肤。
     vec3 tex = texture2D(uSide, vUv).rgb;
-    float lum = dot(tex, vec3(0.299, 0.587, 0.114));
-    float skin = smoothstep(0.5, 0.62, tex.r) * smoothstep(0.06, 0.16, tex.r - tex.b);
+    float lum = dot(tex, LUMA);
+    // 「不是头发」要求偏粉：模型贴图里头发上那片烘焙进去的高光是灰白色的，不能算皮肤
+    float notHairT = smoothstep(0.32, 0.46, tex.r) * smoothstep(0.03, 0.1, tex.r - tex.b);
+    // 只对很侧的面用这条限制：朝前的面以正面看过去像官方图为先，而且模型自己画的眉眼也是深色
+    float gate = max(notHairT, smoothstep(0.14, 0.34, nz));
+    float skinT = smoothstep(0.5, 0.62, tex.r) * smoothstep(0.06, 0.16, tex.r - tex.b);
+    float skinF = smoothstep(0.45, 0.62, dot(fb, LUMA)) * smoothstep(0.6, 0.95, fq.a) * inside;
+    float frontish = smoothstep(-0.1, 0.2, nz);
+    float skin = mix(skinT * step(vP.y, uNeckY), skinF * gate, frontish);
     // 图生 3D 在她右侧多补了一只耳朵（官方形象那一侧是头发盖着的），那一块按头发处理
     skin *= smoothstep(uEar.w * 0.55, uEar.w, distance(vP, uEar.xyz));
-    // 脸上投影不到的小块（鼻孔、鼻底）一律按皮肤算，不然贴图里的暗处会被当成头发，变成脸上的黑点
+    // 脸的范围（裁剪图坐标里的一个椭圆）：投影不到的小块（鼻孔、鼻底）一律按皮肤算
+    vec2 fc = (fuv - vec2(0.57, 0.6)) / vec2(0.37, 0.37);
+    float face = (1.0 - smoothstep(0.8, 1.0, dot(fc, fc))) * smoothstep(-0.25, 0.0, nz) * gate;
     skin = max(skin, face);
-    vec3 hairCol = uHair * mix(0.8, 1.42, smoothstep(0.08, 0.8, lum));
-    vec3 skinCol = uSkin * mix(0.86, 1.0, smoothstep(0.3, 0.8, lum));
+
+    // 侧面的颜色：头发用官方图里量到的发色，只借模型贴图的明暗；
+    // 皮肤用官方图在这个位置的模糊颜色，脸颊侧面的明暗就和正面接得上
+    vec3 hairCol = uHair * mix(0.86, 1.22, smoothstep(0.08, 0.8, lum));
+    vec3 skinCol = mix(uSkin * 0.9, fb, 0.75 * skinF * frontish);
     vec3 side = mix(hairCol, skinCol, skin);
 
-    // 脸的范围内，只要面不背对镜头就完全用官方图：眼窝、鼻底这些略微倾斜的面上
-    // 不能让模型自己的五官透出来。头发则是越靠近轮廓、面越侧，越多地让位给侧面的着色。
-    float wn = mix(smoothstep(0.1, 0.4, nz), smoothstep(-0.1, 0.06, nz), face);
+    // 官方图的权重：脸的范围内只要面不背对镜头就完全用官方图（眼窝、鼻底这些略微倾斜的面上
+    // 不能让模型自己的五官透出来）；其余地方越侧越让位给上面的侧面着色。
+    float wn = mix(smoothstep(0.12, 0.45, nz), smoothstep(-0.1, 0.06, nz), face);
+    // 模型说这里是头发、官方图在这个位置却是皮肤：这是头发的侧壁，不能把脸投上去
+    float clash = (1.0 - gate) * smoothstep(0.45, 0.62, dot(front, LUMA));
+    wn *= 1.0 - clash;
     float w = wn * smoothstep(0.7, 0.99, f.a) * inside;
 
-    vec3 col = toLinear(mix(side, front, w)) * uTint;
-    float rim = pow(1.0 - clamp(dot(normalize(vNv), normalize(vV)), 0.0, 1.0), 2.6);
-    col += uRim * rim;
+    // 灯光：侧面和后脑完全按舞台灯光算，和身体用的是同一个函数；
+    // 正面的官方图自带柔和的明暗，只轻轻跟一点舞台光，保住官方的观感
+    float nl = length(vNw);
+    vec3 N = nl > 1e-5 ? vNw / nl : vec3(0.0, 1.0, 0.0);
+    vec3 V = normalize(cameraPosition - vW);
+    float lit;
+    vec3 L = softLight(N, skin, 1.0, lit);
+    // 头发按舞台光略提亮；侧面的皮肤压暗一点，和官方图里脸颊边缘的明暗接上
+    vec3 sideLit = toLinear(side) * L * mix(1.12, 0.9, skin);
+    // 头发上一条很淡很宽的高光带（顺着发丝方向的各向异性高光）
+    vec3 T = cross(cross(N, vec3(0.0, 1.0, 0.0)), N);
+    float tl = length(T);
+    T = tl > 1e-4 ? T / tl : vec3(1.0, 0.0, 0.0);
+    vec3 H = normalize(uKeyDir + V);
+    float th = dot(normalize(T - N * 0.2), H);
+    float band = pow(max(1.0 - th * th, 0.0), 14.0) * (1.0 - skin);
+    sideLit += (toLinear(uHair) * 1.6 + vec3(0.02)) * band * 0.22 * uKeyCol * 0.3183 * smoothstep(-0.3, 0.5, dot(N, uKeyDir));
+    vec3 frontLit = toLinear(front) * mix(vec3(1.0), L * 1.04, 0.28) * uTint;
+
+    vec3 col = mix(sideLit, frontLit, w);
+    float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    col += uRim * fres * 0.9 * (1.0 - w * 0.6);
     gl_FragColor = vec4(col, 1.0);
   }`;
 
@@ -228,6 +269,8 @@ export async function loadDoubaoHead() {
       uHair: new THREE.Vector3(parseInt(meta.colors.hair.slice(1, 3), 16) / 255, parseInt(meta.colors.hair.slice(3, 5), 16) / 255, parseInt(meta.colors.hair.slice(5, 7), 16) / 255),
       uSkin: new THREE.Vector3(parseInt(meta.colors.skin.slice(1, 3), 16) / 255, parseInt(meta.colors.skin.slice(3, 5), 16) / 255, parseInt(meta.colors.skin.slice(5, 7), 16) / 255),
       uEar: new THREE.Vector4(...(mesh3d.ear || [9, 9, 9]), 0.085),
+      // 发梢的高度（模型坐标）：背面在它以下才可能是脖子
+      uNeckY: chinY - 0.022,
     },
     chinY,
     neckX,
@@ -237,9 +280,8 @@ export async function loadDoubaoHead() {
 }
 
 // 每个实例有自己的材质（表情和灯光各自独立），几何体和贴图共享
-export function createDoubaoHead(assets, rimUniform) {
+export function createDoubaoHead(assets) {
   const tint = { value: new THREE.Color(1, 1, 1) };
-  const rim = { value: new THREE.Color(0, 0, 0) };
   const u = assets.uniforms;
   const mat = new THREE.ShaderMaterial({
     uniforms: {
@@ -250,8 +292,9 @@ export function createDoubaoHead(assets, rimUniform) {
       uHair: { value: u.uHair },
       uSkin: { value: u.uSkin },
       uEar: { value: u.uEar },
+      uNeckY: { value: u.uNeckY },
       uTint: tint,
-      uRim: rim,
+      ...charLight,
     },
     vertexShader: HEAD_VERT,
     fragmentShader: HEAD_FRAG,
@@ -270,10 +313,8 @@ export function createDoubaoHead(assets, rimUniform) {
     },
     setLight(k) {
       tint.value.setScalar(k);
-      // 轮廓光跟随舞台，但比身体弱一些，保住官方脸的原色
-      rim.value.copy(rimUniform.value).multiplyScalar(0.22);
     },
     // 头的中心相对头部关节的高度，给特效定位用
-    centerY: 0.2,
+    centerY: 0.165,
   };
 }

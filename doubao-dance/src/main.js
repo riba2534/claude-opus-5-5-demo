@@ -103,7 +103,7 @@ async function boot() {
     if (icon) icon.href = DOUBAO_AVATAR;
   }
   for (let i = 0; i < IDS.length; i++) {
-    const d = createDancer(IDS[i], { outline: i === 0 || quality.rivalOutline, faceSize: i === 0 ? 512 : 256, officialHead: i === 0 ? headAssets : null });
+    const d = createDancer(IDS[i], { faceSize: 512, officialHead: i === 0 ? headAssets : null });
     d.root.position.set(SPOTS[i][0], SPOTS[i][1], SPOTS[i][2]);
     if (i > 0) d.root.scale.setScalar(0.97);
     R.scene.add(d.root);
@@ -168,7 +168,7 @@ async function boot() {
     if (state === 'title') {
       d.stopSequence();
       d.set('title');
-      R.setShift(portrait() ? 0 : 0.2, portrait() ? 0.14 : 0);
+      R.setShift(portrait() ? 0 : 0.2, portrait() ? 0.19 : 0);
     } else if (state === 'select') {
       d.stopSequence();
       d.set('select');
@@ -177,14 +177,15 @@ async function boot() {
       d.stopSequence();
       d.set('results');
       // 竖屏的结算面板从底部升起来，把主角往上让到面板上方
-      R.setShift(portrait() ? 0 : 0.24, portrait() ? 0.34 : 0);
+      R.setShift(portrait() ? 0 : 0.24, portrait() ? 0.26 : 0);
     } else if (inGame()) {
       R.setShift(0, playShift());
     }
   }
-  // 游戏中把画面上移给操作区让位；节拍轨道更高，需要多让一点
+  // 游戏中把画面上移给操作区让位
   function playShift() {
-    return (portrait() || hud.touch ? 0.17 : 0.15) + (hud.noteA > 0.5 ? 0.1 : 0);
+    // 人物变高以后上移量要小一些，不然头会顶到顶栏下面的横幅；节拍玩法靠拉远镜头腾地方（见主循环）
+    return (portrait() || hud.touch ? 0.15 : 0.13) - (hud.noteA > 0.5 ? 0.02 : 0);
   }
 
   // 豆包的气泡
@@ -791,6 +792,8 @@ async function boot() {
       focus.set(doubao.root.position.x + doubao.joints.hips.position.x, 0, doubao.root.position.z + doubao.joints.hips.position.z);
       stage.update(dt, beat, live ? levels : null, focus);
       if (state === 'playing' && !params.shot) R.setShift(0, playShift());
+      // 节拍轨道占的地方多：镜头拉远一点，人物整个留在轨道上方
+      R.director.zoomOut = inGame() && hud.noteA > 0.5 ? 1 : 0;
       R.director.update(dt, beat);
       R.frame(dt);
       hud.draw(game, beat, dt, inGame() && state !== 'starting');
