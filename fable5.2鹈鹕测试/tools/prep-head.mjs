@@ -1,12 +1,19 @@
-// 把图生 3D 得到的豆包胸像 GLB 处理成游戏用的头模资源（只解析数据，不执行模型文件里的任何内容）
-// 用法：node tools/prep-head.mjs <输入.glb> [目标三角形数]
-// 输出：assets/doubao-head.bin（量化后的几何）、assets/doubao-head.webp（模型自带贴图）、assets/doubao-head.json（对齐参数）
+// 把图生 3D 得到的豆包胸像 GLB 重新采样成游戏用的头模数据（只解析数据，不执行模型文件里的任何内容）
+// 用法：node tools/prep-head.mjs <输入.glb> [--debug <目录>]
+// 输出：assets/doubao-head.bin（规则网格上的半径图 + 头发/皮肤分区）、assets/doubao-head.json（与官方图的对齐参数）
+//
+// 生成模型的三角网表面坑洼、布线杂乱，直接用会有折痕和色块。这里只取它的"形状"：
+// 从头部中轴向外发射射线，记录最外层表面的距离，得到一张规则的半径图；
+// 头发与皮肤分开做平滑，再把每一列的下沿对齐到发梢 / 下颌线。运行时由这张图重建出布线规整的光滑网格。
 import { readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
-import { MeshoptSimplifier } from 'meshoptimizer';
 
-const [, , glbPath, triArg] = process.argv, TARGET = +(triArg || 11000);
-const YCUT = -0.275; // 脖子最细处略偏下：以上保留（头 + 脖子），以下的肩膀丢弃，由游戏里的身体代替
+const args = process.argv.slice(2), glbPath = args[0], dbg = args.includes('--debug') ? args[args.indexOf('--debug') + 1] : null;
+const YCUT = -0.275; // 脖子最细处略偏下：以上是头，以下的肩膀丢弃，由游戏里的身体代替
+// 参数化：上半部分是以 (0,YC,0) 为球心的半球（ND+1 行，极角 0..90°），下半部分是绕竖直中轴的圆柱（水平射线）
+const NU = 288, ND = 52, NC = 38, NV = ND + 1 + NC, YC = 0.1, DY = 0.01, NC2 = 36, RMAX = 0.45;
+const PI = Math.PI, clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
 const buf = readFileSync(glbPath), dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
 if (dv.getUint32(0, true) != 0x46546c67) throw Error('不是 GLB 文件');
 let off = 12, json, bin;
@@ -19,11 +26,10 @@ const ibv = json.bufferViews[json.images[0].bufferView], png = bin.subarray(ibv.
 // ---- 1. 裁掉肩膀 ----
 const keep = [];
 for (let t = 0; t < idx0.length; t += 3) { const a = idx0[t], b = idx0[t + 1], c = idx0[t + 2]; if ((pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3 > YCUT) keep.push(a, b, c); }
-let idx = new Uint32Array(keep);
+const idx = new Uint32Array(keep), nt = idx.length / 3;
 
 // ---- 2. 贴图与官方头像解码 ----
 const tex = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true }), TW = tex.info.width, TH = tex.info.height;
-const texAt = (u, v) => { const x = Math.min(TW - 1, Math.max(0, (u * TW) | 0)), y = Math.min(TH - 1, Math.max(0, (v * TH) | 0)), o = (y * TW + x) * 4; return [tex.data[o], tex.data[o + 1], tex.data[o + 2]]; };
 const off_ = await sharp('assets/doubao-official.webp').ensureAlpha().raw().toBuffer({ resolveWithObject: true }), OW = off_.info.width, OH = off_.info.height, od = off_.data;
 // 官方图抠图：从四周泛洪去掉白底与浅蓝圆底（与运行时 buildHead 里的规则一致）
 const bg = new Uint8Array(OW * OH), st = [];
@@ -63,50 +69,118 @@ for (const [ds, da, dc, n] of [[0.06, 0, 0.04, 4], [0.02, 0.02, 0.012, 3], [0.00
 const [S, A, CX, CY] = best;
 console.log('对齐：scale', S.toFixed(4), 'aspect', A.toFixed(4), 'cx', CX.toFixed(4), 'cy', CY.toFixed(4), 'IoU', bs.toFixed(4));
 
-// ---- 4. 模型贴图与官方图的色差（按头发区域求增益），以及模型多补出来的右耳位置 ----
-const sum = [0, 0, 0, 0, 0, 0]; let ear = [0, 0, 0, 0];
-for (let t = 0; t < idx.length; t += 3) {
-  const [a, b, c] = [idx[t], idx[t + 1], idx[t + 2]], P = k => [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]], [pa, pb, pc] = [P(a), P(b), P(c)];
-  const nx = (pb[1] - pa[1]) * (pc[2] - pa[2]) - (pb[2] - pa[2]) * (pc[1] - pa[1]), nz = (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]), ny = (pb[2] - pa[2]) * (pc[0] - pa[0]) - (pb[0] - pa[0]) * (pc[2] - pa[2]), nl = Math.hypot(nx, ny, nz) || 1;
-  const x = (pa[0] + pb[0] + pc[0]) / 3, y = (pa[1] + pb[1] + pc[1]) / 3, z = (pa[2] + pb[2] + pc[2]) / 3, g = texAt((uv[a * 2] + uv[b * 2] + uv[c * 2]) / 3, (uv[a * 2 + 1] + uv[b * 2 + 1] + uv[c * 2 + 1]) / 3);
-  if (nz / nl > 0.6) { const u = CX + S * x, v = CY - S * A * y, i = ((v * OH) | 0) * OW + ((u * OW) | 0); if (u > 0 && u < 1 && v > 0 && v < 1 && !bg[i] && od[i * 4] < 110 && g[0] < 130) for (let k = 0; k < 3; k++) { sum[k] += od[i * 4 + k]; sum[3 + k] += g[k]; } }
-  // 官方形象只露出她的左耳（+X）；-X 一侧肤色的凸起就是模型多补的耳朵
-  if (x < -0.26 && nx / nl < -0.2 && g[0] > 150 && g[0] - g[2] > 25) { ear[0] += x; ear[1] += y; ear[2] += z; ear[3]++; }
-}
-const gain = [0, 1, 2].map(k => +(sum[k] / (sum[3 + k] || 1)).toFixed(3));
-ear = ear[3] ? ear.slice(0, 3).map(v => +(v / ear[3]).toFixed(4)) : null;
-console.log('头发色差增益', gain, '多余的耳朵中心', ear);
-
-// ---- 5. 平滑后脑：图生 3D 在头顶后方留下一道折痕，对耳后的头发做拉普拉斯平滑（脸和正面的发型不动）----
-await MeshoptSimplifier.ready;
+// ---- 4. 最外层表面采样 ----
+const rowRay = j => j <= ND ? { oy: YC, sp: Math.sin((j / ND) * PI / 2), cp: Math.cos((j / ND) * PI / 2) } : { oy: YC - (j - ND) * DY, sp: 1, cp: 0 };
+const rho = new Float32Array(NU * NV), col = new Uint8Array(NU * NV * 3), miss = new Uint8Array(NU * NV);
 {
-  const weld = MeshoptSimplifier.generatePositionRemap(pos, 3), nb = new Map();
-  const link = (a, b) => { if (a == b) return; let s = nb.get(a); if (!s) nb.set(a, (s = new Set())); s.add(b); };
-  for (let t = 0; t < idx.length; t += 3) { const a = weld[idx[t]], b = weld[idx[t + 1]], c = weld[idx[t + 2]]; link(a, b); link(b, a); link(b, c); link(c, b); link(a, c); link(c, a); }
-  const wgt = v => Math.min(1, Math.max(0, (-0.03 - pos[v * 3 + 2]) / 0.09)) * 0.6; // z 越靠后权重越大
-  for (let it = 0; it < 24; it++) {
-    const nx = new Map();
-    for (const [v, s] of nb) { const w = wgt(v); if (w <= 0) continue; let x = 0, y = 0, z = 0; for (const u of s) { x += pos[u * 3]; y += pos[u * 3 + 1]; z += pos[u * 3 + 2]; } const n = s.size; nx.set(v, [pos[v * 3] + (x / n - pos[v * 3]) * w, pos[v * 3 + 1] + (y / n - pos[v * 3 + 1]) * w, pos[v * 3 + 2] + (z / n - pos[v * 3 + 2]) * w]); }
-    for (const [v, p] of nx) { pos[v * 3] = p[0]; pos[v * 3 + 1] = p[1]; pos[v * 3 + 2] = p[2]; }
+  const ymin = new Float32Array(nt), ymax = new Float32Array(nt);
+  for (let t = 0; t < nt; t++) { const a = pos[idx[t * 3] * 3 + 1], b = pos[idx[t * 3 + 1] * 3 + 1], c = pos[idx[t * 3 + 2] * 3 + 1]; ymin[t] = Math.min(a, b, c); ymax[t] = Math.max(a, b, c); }
+  for (let j = 0; j < NV; j++) {
+    const { oy, sp, cp } = rowRay(j), cand = [];
+    for (let t = 0; t < nt; t++) if (j <= ND ? ymax[t] > YC - 0.02 : ymin[t] <= oy && ymax[t] >= oy) cand.push(t);
+    for (let i = 0; i < NU; i++) {
+      const th = (i / NU) * PI * 2, dx = sp * Math.sin(th), dy = cp, dz = sp * Math.cos(th);
+      let bt = 0, bi = -1, bu = 0, bv = 0;
+      for (const t of cand) { // Möller–Trumbore，取最远的交点
+        const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+        const e1x = pos[b] - pos[a], e1y = pos[b + 1] - pos[a + 1], e1z = pos[b + 2] - pos[a + 2], e2x = pos[c] - pos[a], e2y = pos[c + 1] - pos[a + 1], e2z = pos[c + 2] - pos[a + 2];
+        const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x, det = e1x * px + e1y * py + e1z * pz;
+        if (Math.abs(det) < 1e-12) continue;
+        const inv = 1 / det, tx = -pos[a], ty = oy - pos[a + 1], tz = -pos[a + 2], u = (tx * px + ty * py + tz * pz) * inv;
+        if (u < -1e-4 || u > 1.0001) continue;
+        const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x, v = (dx * qx + dy * qy + dz * qz) * inv;
+        if (v < -1e-4 || u + v > 1.0001) continue;
+        const tt = (e2x * qx + e2y * qy + e2z * qz) * inv;
+        if (tt > bt) { bt = tt; bi = t; bu = u; bv = v; }
+      }
+      const k = j * NU + i; rho[k] = bt;
+      if (bi < 0) { miss[k] = 1; continue; }
+      const a = idx[bi * 3], b = idx[bi * 3 + 1], c = idx[bi * 3 + 2], w = 1 - bu - bv;
+      const U = uv[a * 2] * w + uv[b * 2] * bu + uv[c * 2] * bv, V = uv[a * 2 + 1] * w + uv[b * 2 + 1] * bu + uv[c * 2 + 1] * bv;
+      const o = (clamp((V * TH) | 0, 0, TH - 1) * TW + clamp((U * TW) | 0, 0, TW - 1)) * 4;
+      col[k * 3] = tex.data[o]; col[k * 3 + 1] = tex.data[o + 1]; col[k * 3 + 2] = tex.data[o + 2];
+    }
   }
-  for (let v = 0; v < weld.length; v++) if (weld[v] != v) { pos[v * 3] = pos[weld[v] * 3]; pos[v * 3 + 1] = pos[weld[v] * 3 + 1]; pos[v * 3 + 2] = pos[weld[v] * 3 + 2]; }
+}
+const W = i => ((i % NU) + NU) % NU, at = (a, i, j) => a[clamp(j, 0, NV - 1) * NU + W(i)];
+// 补洞：射线从三角形缝隙里漏出去的格子，取周围有效值的平均
+for (let it = 0; it < 8; it++) for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+  const k = j * NU + i; if (!miss[k]) continue;
+  let s = 0, n = 0, c = [0, 0, 0];
+  for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const jj = j + dj; if (jj < 0 || jj >= NV) continue; const q = jj * NU + W(i + di); if (!miss[q]) { s += rho[q]; n++; for (let e = 0; e < 3; e++) c[e] += col[q * 3 + e]; } }
+  if (n > 1) { rho[k] = s / n; for (let e = 0; e < 3; e++) col[k * 3 + e] = c[e] / n; miss[k] = 0; }
 }
 
-// ---- 6. 简化 + 压实 + 量化 ----
-const before = idx.length / 3;
-[idx] = MeshoptSimplifier.simplifyWithAttributes(idx, pos, 3, uv, 2, [0.5, 0.5], null, TARGET * 3, 0.02, ['Prune']);
-const remap = new Int32Array(pos.length / 3).fill(-1), np = [], nu = [];
-for (let i = 0; i < idx.length; i++) { const v = idx[i]; if (remap[v] < 0) { remap[v] = np.length / 3; np.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]); nu.push(uv[v * 2], uv[v * 2 + 1]); } idx[i] = remap[v]; }
-const nv = np.length / 3; if (nv > 65535) throw Error('顶点数超过 16 位索引上限');
-const mn = [9, 9, 9], mx = [-9, -9, -9]; for (let i = 0; i < np.length; i++) { mn[i % 3] = Math.min(mn[i % 3], np[i]); mx[i % 3] = Math.max(mx[i % 3], np[i]); }
-const out = Buffer.alloc(8 + 24 + nv * 10 + idx.length * 2); let o = 0;
-out.writeUInt32LE(nv, o); o += 4; out.writeUInt32LE(idx.length, o); o += 4;
-for (let k = 0; k < 3; k++) { out.writeFloatLE(mn[k], o); o += 4; } for (let k = 0; k < 3; k++) { out.writeFloatLE(mx[k] - mn[k], o); o += 4; }
-for (let i = 0; i < np.length; i++) { out.writeUInt16LE(Math.round(((np[i] - mn[i % 3]) / (mx[i % 3] - mn[i % 3])) * 65535), o); o += 2; }
-for (let i = 0; i < nu.length; i++) { out.writeUInt16LE(Math.round(Math.min(1, Math.max(0, i % 2 ? 1 - nu[i] : nu[i])) * 65535), o); o += 2; } // v 翻转成 flipY 贴图的习惯
-for (let i = 0; i < idx.length; i++) { out.writeUInt16LE(idx[i], o); o += 2; }
+// ---- 5. 下沿：每一列从上往下，半径掉到脖子粗细之前的最后一行（发梢或下颌线）----
+const jB = new Float32Array(NU);
+for (let i = 0; i < NU; i++) { let j = ND + 8; while (j < NV - 1 && rho[(j + 1) * NU + i] >= 0.15) j++; jB[i] = j; }
+const blur1 = (a, sig) => { const r = Math.ceil(sig * 3), o = new Float32Array(a.length); for (let i = 0; i < a.length; i++) { let s = 0, w = 0; for (let d = -r; d <= r; d++) { const g = Math.exp(-d * d / (2 * sig * sig)); s += a[(i + d + a.length) % a.length] * g; w += g; } o[i] = s / w; } return o; };
+// 先取邻域最小值再平滑：得到一条光滑、又不越过任何一列悬崖的下沿
+const jBs = blur1(jB.map((_, i) => { let m = 1e9; for (let d = -3; d <= 3; d++) m = Math.min(m, jB[W(i + d)]); return m; }), 2.5).map(v => v - 0.3);
+const inside = (i, j) => j <= jB[W(i)];
+
+// ---- 6. 头发 / 皮肤分区（按模型贴图的颜色）：偏粉的亮色是皮肤，其余是头发；被皮肤包围的深色块（眼睛、眉毛）并入皮肤 ----
+const skin = new Uint8Array(NU * NV);
+for (let k = 0; k < NU * NV; k++) { const r = col[k * 3], g = col[k * 3 + 1], b = col[k * 3 + 2]; skin[k] = r > 135 && r - b > 22 && r >= g ? 1 : 0; }
+{ // 从头顶泛洪头发，没被淹到的非皮肤格子就是五官
+  const hair = new Uint8Array(NU * NV), q = []; for (let i = 0; i < NU; i++) q.push(i);
+  // 泛洪不许从高处的头发跨下"悬崖"流到脸上：左眉和眼睛紧挨着垂下来的鬓发，颜色相近但低了好几厘米
+  const go = (k, q2) => { if (!hair[q2] && !skin[q2] && rho[q2] > rho[k] - 0.012) q.push(q2); };
+  for (let i = 0; i < NU; i++) hair[i] = 0;
+  while (q.length) { const k = q.pop(); if (hair[k] || skin[k]) continue; hair[k] = 1; const i = k % NU, j = (k / NU) | 0; go(k, j * NU + W(i + 1)); go(k, j * NU + W(i - 1)); if (j > 0) go(k, k - NU); if (j < NV - 1 && inside(i, j + 1)) go(k, k + NU); }
+  for (let k = 0; k < NU * NV; k++) skin[k] = hair[k] ? 0 : 1;
+  // 去掉头发里零星的"皮肤"噪点：3x3 多数表决两轮
+  for (let it = 0; it < 2; it++) { const o = skin.slice(); for (let j = 1; j < NV - 1; j++) for (let i = 0; i < NU; i++) { let s = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) s += o[(j + dj) * NU + W(i + di)]; skin[j * NU + i] = s >= 5 ? 1 : 0; } }
+}
+
+// ---- 7. 平滑：头发和皮肤各自在自己的区域里做高斯平滑（头发大幅平滑去掉鼓包，皮肤只轻微平滑保住鼻子嘴唇），互不串色 ----
+function smooth(sigU, sigV, mask) { // mask(k) 返回权重；按物理尺度换算每一行的角向核宽
+  const tmp = new Float32Array(NU * NV), wt = new Float32Array(NU * NV), out = new Float32Array(NU * NV);
+  for (let j = 0; j < NV; j++) {
+    const rr = 0.3 * rowRay(j).sp, cell = Math.max(rr, 0.02) * 2 * PI / NU, sg = Math.min(sigU / cell, NU / 6), r = Math.ceil(sg * 3);
+    for (let i = 0; i < NU; i++) { let s = 0, w = 0; for (let d = -r; d <= r; d++) { const k = j * NU + W(i + d), m = mask(k) * Math.exp(-d * d / (2 * sg * sg)); s += rho[k] * m; w += m; } tmp[j * NU + i] = s; wt[j * NU + i] = w; }
+  }
+  const sv = sigV / DY, rv = Math.ceil(sv * 3);
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) { let s = 0, w = 0; for (let d = -rv; d <= rv; d++) { const jj = j + d; if (jj < 0 || jj >= NV) continue; const g = Math.exp(-d * d / (2 * sv * sv)); s += tmp[jj * NU + i] * g; w += wt[jj * NU + i] * g; } out[j * NU + i] = w > 1e-6 ? s / w : rho[j * NU + i]; }
+  return out;
+}
+const valid = k => inside(k % NU, (k / NU) | 0) ? 1 : 0;
+const rH = smooth(0.05, 0.045, k => valid(k) * (1 - skin[k])), rS = smooth(0.008, 0.008, k => valid(k) * skin[k]);
+const rho2 = new Float32Array(NU * NV); for (let k = 0; k < NU * NV; k++) rho2[k] = skin[k] ? rS[k] : rH[k];
+// 发际线上再做一次不分区的轻微平滑，把头发和皮肤之间的台阶变成缓坡（官方图的发际线和模型的未必重合，硬台阶会露馅）
+for (let k = 0; k < NU * NV; k++) rho[k] = rho2[k];
+const rF = smooth(0.011, 0.011, valid);
+
+// ---- 8. 圆柱部分按列重采样：每一列的最后一行正好落在下沿上 ----
+const NR = ND + 1 + NC2, outR = new Uint16Array(NU * NR), outH = new Uint8Array(NU * NR), outB = new Uint16Array(NU);
+const hairF = new Float32Array(NU * NV); for (let k = 0; k < NU * NV; k++) hairF[k] = 1 - skin[k];
+for (let i = 0; i < NU; i++) {
+  outB[i] = Math.round(((YC - (jBs[i] - ND) * DY) + 0.5) * 65535);
+  for (let j = 0; j < NR; j++) {
+    const js = j <= ND ? j : ND + ((jBs[i] - ND) * (j - ND)) / NC2, j0 = Math.min(Math.floor(js), Math.floor(jB[i])), j1 = Math.min(j0 + 1, Math.floor(jB[i])), f = clamp(js - j0, 0, 1);
+    outR[j * NU + i] = Math.round(clamp((rF[j0 * NU + i] * (1 - f) + rF[j1 * NU + i] * f) / RMAX, 0, 1) * 65535);
+    outH[j * NU + i] = Math.round((hairF[j0 * NU + i] * (1 - f) + hairF[j1 * NU + i] * f) * 255);
+  }
+}
+// 分区图在重采样后的网格上再柔化一格，边界不出锯齿
+{ const o = outH.slice(); for (let j = 1; j < NR - 1; j++) for (let i = 0; i < NU; i++) { let s = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) s += o[(j + dj) * NU + W(i + di)] * (di || dj ? 1 : 2); outH[j * NU + i] = s / 10; } }
+
+// ---- 9. 写出 ----
+const head = Buffer.alloc(16); head.writeUInt16LE(NU, 0); head.writeUInt16LE(ND, 2); head.writeUInt16LE(NC2, 4); head.writeFloatLE(YC, 8); head.writeFloatLE(RMAX, 12);
+const out = Buffer.concat([head, Buffer.from(outB.buffer), Buffer.from(outR.buffer), Buffer.from(outH.buffer)]);
 writeFileSync('assets/doubao-head.bin', out);
-const webp = await sharp(png).resize(512, 512).webp({ quality: 82 }).toBuffer();
-writeFileSync('assets/doubao-head.webp', webp);
-writeFileSync('assets/doubao-head.json', JSON.stringify({ align: [+CX.toFixed(4), +CY.toFixed(4), +S.toFixed(4), +(S * A).toFixed(4)], gain, ear, ycut: YCUT, iou: +bs.toFixed(3) }) + '\n');
-console.log(`三角形 ${before} → ${idx.length / 3}，顶点 ${nv}；bin ${out.length} 字节，贴图 ${webp.length} 字节`);
+// eyes：两只眼睛在官方图里的位置 [u, v, 半宽, 半高]（贴图坐标，v 向上），眨眼用；是对着官方图量出来的
+const EYES = [[0.4268, 0.5654, 0.0742, 0.0547], [0.6563, 0.5488, 0.0684, 0.0508]];
+writeFileSync('assets/doubao-head.json', JSON.stringify({ align: [+CX.toFixed(4), +CY.toFixed(4), +S.toFixed(4), +(S * A).toFixed(4)], ycut: YCUT, iou: +bs.toFixed(3), eyes: EYES }) + '\n');
+console.log(`网格 ${NU}×${NR}，bin ${out.length} 字节；下沿高度 ${Math.min(...jBs).toFixed(1)}..${Math.max(...jBs).toFixed(1)} 行`);
+
+if (dbg) {
+  const img = async (name, w, h, f) => { const b = Buffer.alloc(w * h * 3); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = f((x + NU / 2) % NU, y); b[(y * w + x) * 3] = c[0]; b[(y * w + x) * 3 + 1] = c[1]; b[(y * w + x) * 3 + 2] = c[2]; } await sharp(b, { raw: { width: w, height: h, channels: 3 } }).resize(w * 2, h * 4, { kernel: 'nearest', fit: 'fill' }).png().toFile(dbg + '/' + name + '.png'); };
+  const g = v => { v = clamp(v, 0, 255); return [v, v, v]; };
+  await img('raw', NU, NV, (x, y) => inside(x, y) ? g((rho2[y * NU + x] - 0.15) * 1200) : [60, 0, 0]);
+  await img('skin', NU, NV, (x, y) => inside(x, y) ? (skin[y * NU + x] ? [240, 200, 185] : [70, 50, 44]) : [0, 0, 60]);
+  await img('out', NU, NR, (x, y) => g((outR[y * NU + x] / 65535 * RMAX - 0.15) * 1200));
+  await img('outH', NU, NR, (x, y) => g(outH[y * NU + x]));
+  // 法线着色预览（沿网格差分）
+  await img('shade', NU, NR, (x, y) => { const r = (i, j) => outR[clamp(j, 0, NR - 1) * NU + W(i)] / 65535 * RMAX; return g(128 + ((r(x + 1, y) - r(x - 1, y)) * 9000 + (r(x, y - 1) - r(x, y + 1)) * 9000)); });
+}

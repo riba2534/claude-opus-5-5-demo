@@ -2,7 +2,7 @@
 // 场景 → 画中画 → [半分辨率 AO/体积光 → 双边模糊] → 运动模糊 → Bloom → 自动曝光 → 合成(光晕/ACES/调色) → FXAA
 import {
   WebGLRenderer, Scene, PerspectiveCamera, Camera, Mesh, InstancedMesh, BufferGeometry, InstancedBufferGeometry, SphereGeometry,
-  Float32BufferAttribute, Uint8BufferAttribute, InterleavedBuffer, InterleavedBufferAttribute, InstancedInterleavedBuffer, InstancedBufferAttribute,
+  BufferAttribute, Float32BufferAttribute, Uint8BufferAttribute, InterleavedBuffer, InterleavedBufferAttribute, InstancedInterleavedBuffer, InstancedBufferAttribute,
   MeshStandardMaterial, MeshLambertMaterial, MeshDepthMaterial, ShaderMaterial, DirectionalLight, HemisphereLight, PointLight,
   WebGLRenderTarget, WebGLArrayRenderTarget, DepthTexture, DataTexture, CanvasTexture, Texture, PMREMGenerator, DataUtils, Vector2, Vector3, Vector4, Matrix4,
   HalfFloatType, UnsignedByteType, RGBAFormat, RedFormat, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter, DynamicDrawUsage, BackSide, DoubleSide,
@@ -134,6 +134,7 @@ function withFog(m, key, vPars, vBegin, fExtra, o = {}) {
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + (o.fEm || ''))
       .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + fExtra)
       .replace('#include <opaque_fragment>', '#include <opaque_fragment>\n' + S.F_FOG);
+    for (const [k, c] of o.after || []) s.fragmentShader = s.fragmentShader.replace(`#include <${k}>`, `#include <${k}>\n` + c);
   };
   m.customProgramCacheKey = () => key;
   return m;
@@ -320,24 +321,31 @@ export function grassField(canvas, hf, N) {
   g.instanceCount = Q.grass; grassM.visible = Q.grass > 0 && !!grassOn;
   scene.add(grassM);
 }
-// 豆包的头：贴图用模型自带的（侧面与后脑），正面沿 +Z 投影官方原图；proj = [u0, v0, du/dx, dv/dy]，ear = [x, y, z, 半径]
-export function headMesh(g, faceCv, sideImg, proj, ear) {
+// 豆包的头与身体共用的 uniform：受击闪白、眨眼
+export const charU = { uFl: { value: 0 }, uBlink: { value: 0 } };
+// 豆包的头：正面沿 +Z 投影官方原图，其余部分按分区画程序化的头发 / 皮肤。
+// g.a 每顶点 [头发权重, 遮蔽, 从正面是否看得见]；proj = [u0, v0, du/dx, dv/dy]；hp = 发流参数；eyes = 两只眼睛在贴图里的 [u, v, 半宽, 半高]
+export function headMesh(g, faceCv, proj, hp, eyes) {
   const tf = new CanvasTexture(faceCv); tf.colorSpace = SRGBColorSpace; tf.anisotropy = 8;
-  const ts = new Texture(sideImg); ts.colorSpace = SRGBColorSpace; ts.anisotropy = 4; ts.needsUpdate = true;
-  const m = withFog(new MeshStandardMaterial({ map: ts, roughness: 0.74, metalness: 0, side: DoubleSide, envMapIntensity: 0.35 }), 'dbHead', 'varying vec3 vWp,vLp,vLn;', 'vLp=position;vLn=normal;', '', {
-    keepN: 1, uni: { tFaceO: { value: tf }, uProj: { value: new Vector4(...proj) }, uEar: { value: new Vector4(...ear) } },
-    fPars: 'varying vec3 vLp,vLn;uniform sampler2D tFaceO,tNoise;uniform vec4 uProj,uEar;',
-    // 模型贴图里烘焙的光影把头发压得很暗：按亮度把暗部提亮到官方头发的色调；多补的耳朵涂成头发色；再叠上官方原图
-    fMap: `vec3 sd=diffuseColor.rgb;float sl=dot(sd,vec3(.3,.6,.1)),hk=smoothstep(.2,.08,sl)*smoothstep(.1,.02,sd.r-sd.b);
-      float ang=atan(vLp.x,vLp.z+.03),stn=texture2D(tNoise,vec2(ang*.63662,vLp.y*.3)).r;
-      vec3 hb=vec3(.1,.052,.04)*(.95+1.1*sl)*(.8+.4*stn)+vec3(.085,.055,.045)*smoothstep(.075,0.,abs(vLp.y-.4+.025*sin(ang*3.)))*(.4+.6*stn);
-      sd=mix(sd,hb,max(hk,smoothstep(uEar.w,uEar.w*.55,distance(vLp,uEar.xyz))));
-      vec4 of=texture2D(tFaceO,uProj.xy+vLp.xy*uProj.zw);float fw=of.a*smoothstep(-.06,.04,normalize(vLn).z);
-      diffuseColor.rgb=mix(sd,of.rgb*vec3(1.04,.99,.96),fw);`,
-    // 官方原图自带柔和的光影，所以正面一部分当作自发光，避免被场景光二次压暗
-    fEm: 'totalEmissiveRadiance+=diffuseColor.rgb*fw*.44*(1.-.6*uNight);diffuseColor.rgb*=mix(1.,.56,fw);',
+  const m = withFog(new MeshStandardMaterial({ roughness: 0.6, metalness: 0, envMapIntensity: 0.4 }), 'dbHead', S.V_HEAD_PARS, 'vLp=position;vLn=normal;vHa=aH;', S.F_HEAD_SPEC, {
+    keepN: 1, uni: { tFaceO: { value: tf }, uProj: { value: new Vector4(...proj) }, uHp: { value: new Vector4(...hp) }, uEye: { value: eyes.map(e => new Vector4(...e)) }, ...charU },
+    fPars: S.F_HEAD_PARS, fMap: S.F_HEAD_COL, fEm: S.F_HEAD_EM,
+    after: [['roughnessmap_fragment', 'roughnessFactor=mix(.6,.82,hk);'], ['normal_fragment_begin', S.F_HEAD_NRM], ['opaque_fragment', 'gl_FragColor.rgb=mix(gl_FragColor.rgb,vec3(4.),uFl);']],
   });
-  const mh = new Mesh(plain(g.p, g.n, g.i, g.uv), m); mh.castShadow = true; mh.frustumCulled = false; mh.matrixAutoUpdate = false; // 不接收阴影：头发落在脸上的硬阴影会破坏官方原图自带的柔和光影
+  const b = plain(g.p, g.n, g.i); b.setAttribute('aH', new Float32BufferAttribute(g.a, 3));
+  const mh = new Mesh(b, m); mh.castShadow = true; mh.frustumCulled = false; mh.matrixAutoUpdate = false; // 不接收阴影：头发落在脸上的硬阴影会破坏官方原图自带的柔和光影
+  scene.add(mh);
+  return mh;
+}
+// 豆包的身体：位置和法线每帧由 CPU 蒙皮写入；顶点色是底色，aK 是材质号（皮肤 / 棉布 / 牛仔 / 袜子 / 鞋）
+export function bodyMesh(g) {
+  const b = new BufferGeometry(), dyn = a => { const t = new BufferAttribute(a, 3); t.setUsage(DynamicDrawUsage); return t; };
+  b.setAttribute('position', dyn(g.p)); b.setAttribute('normal', dyn(g.n)); b.setAttribute('color', new BufferAttribute(g.c, 3)); b.setAttribute('uv', new BufferAttribute(g.uv, 2)); b.setAttribute('aK', new BufferAttribute(g.k, 1)); b.setIndex(g.i);
+  const m = withFog(new MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0, envMapIntensity: 0.45 }), 'dbBody', 'attribute float aK;varying vec3 vWp;varying vec2 vBu;varying float vK;', 'vBu=uv;vK=aK;', S.F_BODY_LIGHT, {
+    keepN: 1, uni: charU, fPars: S.F_BODY_PARS, fEm: S.F_BODY_EM,
+    after: [['color_fragment', S.F_BODY_COL], ['roughnessmap_fragment', 'roughnessFactor=bR;'], ['opaque_fragment', 'gl_FragColor.rgb=mix(gl_FragColor.rgb,vec3(4.),uFl);']],
+  });
+  const mh = new Mesh(b, m); mh.castShadow = mh.receiveShadow = true; mh.frustumCulled = false; mh.matrixAutoUpdate = false;
   scene.add(mh);
   return mh;
 }

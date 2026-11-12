@@ -2,7 +2,7 @@
 import { G, loadOpt } from './state.js';
 import { initGfx, stats, glInfo, view, resetDraws, qName } from './gfx.js';
 import { buildWorld } from './world.js';
-import { buildDoubao, buildHead } from './doubao.js';
+import { buildDoubao, buildHead, dbg } from './doubao.js';
 import { buildEnemies, spawnEnemy } from './enemies.js';
 import { buildFx } from './fx.js';
 import { initHud, $ } from './hud.js';
@@ -22,19 +22,19 @@ async function boot() {
   loadOpt();
   // 官方豆包头像（构建时内联为 data URL）
   const img = new Image(); img.src = __DOUBAO__;
-  const side = new Image(); side.src = __HEADTEX__;
   // decode() 在个别浏览器上会无故拒绝，退回等 onload
   const ready = im => im.decode().catch(() => new Promise((ok, no) => { if (im.complete && im.naturalWidth) ok(); else { im.onload = ok; im.onerror = no; } }));
-  await Promise.all([ready(img), ready(side)]);
+  await ready(img);
   if (qs.get('q')) G.opt.q = qs.get('q');
   G.debug = qs.has('debug') || qs.has('auto') || qs.has('start'); G.auto = qs.has('auto');
   if (qs.has('tod')) G.debugTod = +qs.get('tod');
   if (qs.has('botw')) G.botW = +qs.get('botw');
   if (qs.has('headcam')) G.dbgCam = qs.get('headcam').split(',').map(Number);
+  if (qs.has('blink')) dbg.blink = +qs.get('blink');
   if (!initGfx($('c'), 'high')) return fail('当前浏览器不支持 WebGL2，请换用新版 Chrome / Edge / Safari。');
   applyQuality();
   buildWorld(+qs.get('seed') || 4207, img);
-  buildDoubao(); buildHead(img, side); buildEnemies(); buildFx(); buildPickups();
+  buildDoubao(); buildHead(img); buildEnemies(); buildFx(); buildPickups();
   initHud(img); initInput($('c'), initAudio); bindUI();
   if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { G.touch = matchMedia('(pointer:coarse)').matches; if (G.touch) { document.body.classList.add('t'); setAutoQ('medium'); applyQuality(); } }
   toMenu();

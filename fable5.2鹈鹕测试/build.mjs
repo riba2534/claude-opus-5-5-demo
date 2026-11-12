@@ -29,7 +29,6 @@ const res = await build({
   // 内联的素材：官方豆包头像、头部 3D 模型的量化几何与贴图
   define: {
     __DOUBAO__: JSON.stringify('data:image/webp;base64,' + readFileSync('assets/doubao-official.webp').toString('base64')),
-    __HEADTEX__: JSON.stringify('data:image/webp;base64,' + readFileSync('assets/doubao-head.webp').toString('base64')),
     __HEADBIN__: JSON.stringify(readFileSync('assets/doubao-head.bin').toString('base64')),
   },
 });

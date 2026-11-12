@@ -310,8 +310,8 @@ export function frame(rdt) {
   const live = step(rdt);
   if (live) {
     const p = G.pl, c = G.cam;
-    // 调试：?headcam=角度,距离,高度 让镜头绕着豆包的头看（0 为正前方）
-    if (G.dbgCam) { const [a, d, h] = G.dbgCam, y = p.yaw + a; setCam(headPos[0] + sin(y) * d, headPos[1] + h, headPos[2] + cos(y) * d, headPos[0], headPos[1] - 0.03, headPos[2], 0.6); }
+    // 调试：?headcam=角度,距离,高度[,注视点上移,视角,注视点前移,注视点左移] 让镜头绕着豆包看（0 为正前方）
+    if (G.dbgCam) { const [a, d, h, ly = 0, fov = 0.6, lf = 0, ls = 0] = G.dbgCam, y = p.yaw + a, tx = headPos[0] + sin(p.yaw) * lf + cos(p.yaw) * ls, tz = headPos[2] + cos(p.yaw) * lf - sin(p.yaw) * ls; setCam(tx + sin(y) * d, headPos[1] + h + ly, tz + cos(y) * d, tx, headPos[1] - 0.03 + ly, tz, fov); }
     setListener(c.x, c.y, c.z, -cos(c.yaw), sin(c.yaw));
     render(env, G.rt, rdt, p.x, p.y, p.z);
     adapt(rdt);

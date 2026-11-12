@@ -579,3 +579,67 @@ void main(){
   vec3 b=a*.5+b4.rgb*.5;float lb=a.r*.299+a.g*.587+a.b*.114;lb=lb*.5+b4.a*.5;
   gl_FragColor=vec4((lb<lmin||lb>lmax)?a:b,1.);}
 `;
+
+// ---------- 豆包的头 ----------
+export const V_HEAD_PARS = `attribute vec3 aH;varying vec3 vWp,vLp,vLn,vHa;`;
+export const F_HEAD_PARS = `varying vec3 vLp,vLn,vHa;uniform sampler2D tFaceO,tNoise;uniform vec4 uProj,uHp,uEye[2];uniform float uBlink,uFl;uniform mat3 normalMatrix;`;
+// 颜色：头发是沿发流方向拉长的噪声（一丝一丝的深浅），皮肤取官方图的肤色；正面叠上官方原图。
+// 眨眼：在官方图的眼睛位置上，用肤色自上而下盖住眼睛，边缘画一条睫毛线
+export const F_HEAD_COL = `
+float hk=smoothstep(.3,.7,vHa.x);
+float fdx=vLp.x-uHp.x,fdz=vLp.z-uHp.y,fxe=(fdx<0.?-1.:1.)*max(abs(fdx),.165*smoothstep(-.034,.056,fdz)*smoothstep(uHp.z,uHp.w,vLp.y));
+vec2 huv=vec2(atan(fxe,fdz)*.4775,(length(vec2(fxe,fdz))-vLp.y)*.8),hu2=huv*vec2(5.,.5)+.37;
+float hst=texture2D(tNoise,huv).r*.55+texture2D(tNoise,hu2).r*.45;
+vec3 sd=mix(vec3(.9,.6,.51),vec3(.05,.0275,.021)*(.55+.9*hst),hk);
+vec2 puv=uProj.xy+vLp.xy*uProj.zw;vec4 of=texture2D(tFaceO,puv);
+for(int e=0;e<2;e++){vec2 d=(puv-uEye[e].xy)/uEye[e].zw;float r2=dot(d,d);
+  if(uBlink>.01&&r2<1.){float ly=mix(1.1,-.4-.32*(1.-d.x*d.x),uBlink),ed=smoothstep(1.,.72,r2);
+    of.rgb=mix(of.rgb,vec3(.93,.66,.585),ed*smoothstep(ly-.05,ly+.05,d.y));
+    of.rgb=mix(of.rgb,vec3(.06,.03,.025),ed*smoothstep(.17,.05,abs(d.y-ly))*smoothstep(0.,.3,uBlink));}}
+float fw=of.a*smoothstep(mix(-.06,.14,hk),mix(.04,.42,hk),normalize(vLn).z)*vHa.z;
+diffuseColor.rgb=mix(sd,of.rgb*vec3(1.04,.99,.96),fw)*mix(vHa.y,1.,(1.-hk)*.45);
+`;
+// 法线：头发沿"垂直于发丝"的方向做高频扰动，高光就会像真头发一样被拉成横跨发丝的一条光带
+export const F_HEAD_NRM = `
+vec3 hT;{vec3 nl=normalize(vLn),fl=normalize(vec3(fxe*smoothstep(0.,.04,abs(fdx)),0.,fdz)+1e-4),F=normalize(vec3(fl.x*.5,-1.,fl.z*.5));
+  hT=normalize(F-nl*dot(nl,F));vec3 hB=cross(nl,hT);
+  float dn=texture2D(tNoise,hu2+vec2(.006,0.)).r-texture2D(tNoise,hu2-vec2(.006,0.)).r;
+  nl=normalize(nl+hB*dn*.9*hk*(1.-fw));normal=normalize(normalMatrix*nl);hT=normalize(normalMatrix*hT);}
+`;
+// 官方原图自带柔和的光影，所以正面一部分当作自发光，避免被场景光二次压暗
+export const F_HEAD_EM = `totalEmissiveRadiance+=diffuseColor.rgb*mix(.44,fw*.2,hk)*(1.-.6*uNight);diffuseColor.rgb*=mix(.56,mix(1.,.5,fw),hk);`;
+// 头发高光（Kajiya-Kay）：按发丝切线算，一条偏白的主高光加一条带发色的次高光；太阳之外再加一份天光，阴天和夜里头发也有光泽
+export const F_HEAD_SPEC = `
+#if NUM_DIR_LIGHTS>0
+{vec3 hV=normalize(vViewPosition),hL=directionalLights[0].direction,hH=normalize(hL+hV);float sh=hst-.5,hm=hk*(1.-fw)*vHa.y;
+  reflectedLight.directSpecular*=1.-.8*hk;reflectedLight.indirectSpecular*=1.-.7*hk; // 头发不要塑料那样的各向同性高光
+  float d1=dot(normalize(hT+normal*(-.1+.35*sh)),hH),d2=dot(normalize(hT+normal*(.2+.35*sh)),hH);
+  reflectedLight.directSpecular+=directionalLights[0].color*(vec3(.008)*pow(max(1.-d1*d1,0.),60.)+vec3(.022,.0125,.009)*(.4+1.2*hst)*pow(max(1.-d2*d2,0.),14.))*smoothstep(-.25,.6,dot(normal,hL))*hm;
+  vec3 hL2=normalize((viewMatrix*vec4(.1,1.,.2,0.)).xyz);float d3=dot(normalize(hT+normal*(.12+.35*sh)),normalize(hL2+hV));
+  reflectedLight.directSpecular+=(uHor*vec3(.035,.024,.02)+.003)*(.5+hst)*pow(max(1.-d3*d3,0.),12.)*smoothstep(-.3,.5,dot(normal,hL2))*hm;}
+#endif
+`;
+
+// ---------- 豆包的身体 ----------
+export const F_BODY_PARS = `varying vec2 vBu;varying float vK;uniform sampler2D tNoise;uniform float uFl;`;
+// 各种材质的细节：棉布的针织纹、牛仔的斜纹与水洗深浅、裤兜的明线。织纹比像素还细时淡出，免得闪烁
+export const F_BODY_COL = `
+float bK=floor(vK+.5),bR=.55,bS=0.,bPx=fwidth(vBu.x)+fwidth(vBu.y);
+if(bK==1.){float fd=smoothstep(.0011,.0004,bPx);
+  diffuseColor.rgb*=1.+.3*sin(vBu.x*5200.)*sin(vBu.y*4300.)*fd+.5*(texture2D(tNoise,vBu*5.).r-.5);bR=.9;bS=.5;
+}else if(bK==2.||bK==3.){float fd=smoothstep(.0014,.0005,bPx);vec2 u=bK==3.?vBu*vec2(.07,.055):vBu;
+  diffuseColor.rgb*=(1.+.25*sin((u.x+u.y)*4400.)*fd)*(.8+.42*texture2D(tNoise,u*5.).r);
+  diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.36,.44,.6),.1*smoothstep(.45,.8,texture2D(tNoise,u*vec2(26.,2.5)).r));
+  if(bK==3.){float e=min(min(vBu.x,1.-vBu.x),min(vBu.y*.8,(1.-vBu.y)*.9));
+    diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.72,.5,.2),smoothstep(.022,.006,abs(e-.075))*step(.35,fract((vBu.x+vBu.y)*14.)));
+    diffuseColor.rgb*=.8+.2*smoothstep(0.,.05,e);}
+  bR=.86;bS=.25;
+}else if(bK==4.){bR=.92;bS=.4;
+}else if(bK==5.){bR=.42;
+}else{bR=.52;}
+`;
+// 皮肤和脸一样，一部分当作自发光（官方原图自带柔光，身体的皮肤要和它接得上）；布料在掠射角上泛一层绒光
+export const F_BODY_EM = `if(bK==0.){totalEmissiveRadiance+=diffuseColor.rgb*.44*(1.-.6*uNight);diffuseColor.rgb*=.56;}`;
+export const F_BODY_LIGHT = `{float rim=pow(1.-clamp(dot(normal,normalize(vViewPosition)),0.,1.),3.);
+  reflectedLight.directDiffuse*=1.+bS*rim*1.6;reflectedLight.indirectDiffuse*=1.+bS*rim*2.2+(bK==0.?.25*rim:0.);}
+`;
